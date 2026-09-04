@@ -211,6 +211,22 @@ describe('controller navigation', () => {
     expect(spies).toHaveLength(1);
   });
 
+  it('remounts when the page body is replaced under the same URL (Turbo render)', async () => {
+    installComparePage(document, { tabCount: 13 });
+    controller = makeController();
+    await controller.sync(URL_A);
+    expect(spies).toHaveLength(1);
+
+    // Turbo swaps the body after the URL already changed: the old bucket leaves the document.
+    installComparePage(document, { tabCount: 13 });
+    await controller.sync(URL_A);
+    expect(spies[0]!.unmounted).toBe(true);
+    expect(spies).toHaveLength(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(document.querySelectorAll(HOST_TAG)).toHaveLength(1);
+    expect(document.getElementById('files_bucket')!.hasAttribute(OPEN_ATTR)).toBe(true);
+  });
+
   it('remounts for a different compare and removes the old sidebar', async () => {
     installComparePage(document, { tabCount: 13 });
     controller = makeController();

@@ -227,7 +227,12 @@ export function createController(deps: ControllerDeps): Controller {
           return;
         }
         const key = compareKey(parts);
-        if (session?.key === key) return;
+        if (session?.key === key) {
+          // Same compare, but Turbo may have swapped the page body under us: the sidebar left
+          // with the old body while the URL never changed again. A session whose bucket is no
+          // longer in the document is stale and must start over; otherwise this is a no-op.
+          if (!session.bucket || session.bucket.isConnected) return;
+        }
         teardown();
         await start(parts, key);
       } catch (error) {

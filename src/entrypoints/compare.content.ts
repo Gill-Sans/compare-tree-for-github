@@ -39,6 +39,10 @@ export default defineContentScript({
     ctx.addEventListener(window, 'wxt:locationchange', ({ newUrl }) => {
       void controller.sync(newUrl.href);
     });
+    // Turbo pushes the new URL before it renders the new body; re-sync once the body is in place.
+    ctx.addEventListener(document as EventTarget, 'turbo:load', () => {
+      void controller.sync(location.href);
+    });
     await controller.sync(location.href);
   },
 });
