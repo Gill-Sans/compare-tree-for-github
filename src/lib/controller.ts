@@ -1,0 +1,224 @@
+import { createDiffParser } from './diff-parser';
+import {
+  SELECTORS,
+  applyLayout,
+  compareKey,
+  diffUrl,
+  findDiffRoot,
+  measureStickyTop,
+  observeActiveFile,
+  parseCompareUrl,
+  readTabFileCount,
+  removeLayout,
+  removeStaleHosts,
+  scrollToFile,
+  setStickyTop,
+  waitFor,
+  type CompareParts,
+} from './page';
+import type { Prefs } from './prefs';
+import type { Sidebar } from './render';
+import { buildTree } from './tree';
+
+export interface MountedSidebar {
+  sidebar: Sidebar;
+  unmount(): void;
+}
+
+export interface ControllerDeps {
+  fetch: (url: string, init: RequestInit) => Promise<Response>;
+  prefs: Prefs;
+  /** Create the sidebar UI immediately before `anchor` (GitHub's `#files` element). */
+  mount: (anchor: Element) => Promise<MountedSidebar>;
+  doc?: Document;
+  win?: Window;
+  version?: string;
+  log?: (message: string, error?: unknown) => void;
+  waitTimeoutMs?: number;
+}
+
+export interface Controller {
+  /** Bring the page in line with `url`: mount, remount, or unmount as needed. Never throws. */
+  sync(url: string): Promise<void>;
+  dispose(): void;
+  readonly key: string | null;
+}
+
+interface Session {
+  key: string;
+  parts: CompareParts;
+  abort: AbortController;
+  bucket: HTMLElement | null;
+  mounted: MountedSidebar | null;
+  stopObserver: (() => void) | null;
+}
+
+const ACCESS_MESSAGE =
+  'GitHub did not return a diff. Are you signed in with access to this repository?';
+const NETWORK_MESSAGE = 'Could not load the diff. Check your connection and retry.';
+
+export function createController(deps: ControllerDeps): Controller {
+  const doc = deps.doc ?? document;
+  const win = deps.win ?? window;
+  const log =
+    deps.log ??
+    ((message: string, error?: unknown) =>
+      console.warn(`[compare-tree ${deps.version ?? 'dev'}] ${message}`, error ?? ''));
+  let session: Session | null = null;
+
+  function teardown(): void {
+    const current = session;
+    if (!current) return;
+    session = null;
+    current.abort.abort();
+    current.stopObserver?.();
+    current.mounted?.unmount();
+    if (current.bucket) removeLayout(current.bucket);
+  }
+
+  async function load(s: Session): Promise<void> {
+    const mounted = s.mounted;
+    if (!mounted) return;
+    const { sidebar } = mounted;
+    const expectedFiles = readTabFileCount(doc);
+    sidebar.setState({ kind: 'loading', expectedFiles, bytes: 0 });
+    try {
+      const response = await deps.fetch(diffUrl(s.parts, win.location.origin), {
+        credentials: 'same-origin',
+        signal: s.abort.signal,
+      });
+      const type = response.headers.get('content-type') ?? '';
+      if (!response.ok || !type.startsWith('text/plain') || !response.body) {
+        const accessProblem = response.status === 404 || type.includes('text/html');
+        sidebar.setState({
+          kind: 'error',
+          message: accessProblem ? ACCESS_MESSAGE : `GitHub returned ${response.status} for the diff.`,
+        });
+        return;
+      }
+
+      const parser = createDiffParser();
+      const decoder = new TextDecoder();
+      const reader = response.body.getReader();
+      let bytes = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        parser.push(decoder.decode(value, { stream: true }));
+        sidebar.setState({ kind: 'loading', expectedFiles, bytes });
+      }
+      parser.push(decoder.decode());
+      const summary = parser.end();
+      if (s.abort.signal.aborted || session !== s) return;
+
+      sidebar.setTree(buildTree(summary.files));
+      const parsed = summary.files.length;
+      if (expectedFiles !== null && expectedFiles !== parsed) {
+        sidebar.setState({
+          kind: 'ready',
+          warning: `GitHub reports ${expectedFiles.toLocaleString('en-US')} files, the diff contained ${parsed.toLocaleString('en-US')}.`,
+        });
+      } else {
+        sidebar.setState({ kind: 'ready' });
+      }
+    } catch (error) {
+      if (s.abort.signal.aborted) return;
+      log('Failed to load the compare diff', error);
+      sidebar.setState({ kind: 'error', message: NETWORK_MESSAGE });
+    }
+  }
+
+  async function start(parts: CompareParts, key: string): Promise<void> {
+    const s: Session = {
+      key,
+      parts,
+      abort: new AbortController(),
+      bucket: null,
+      mounted: null,
+      stopObserver: null,
+    };
+    session = s;
+
+    try {
+      await waitFor(SELECTORS.files, {
+        timeoutMs: deps.waitTimeoutMs ?? 15_000,
+        signal: s.abort.signal,
+        doc,
+      });
+    } catch (error) {
+      if (!s.abort.signal.aborted) {
+        log('The compare file list did not appear; GitHub markup may have changed', error);
+      }
+      return;
+    }
+    if (session !== s) return;
+
+    const root = findDiffRoot(doc);
+    if (!root) {
+      log('The compare diff container was not found; GitHub markup may have changed');
+      return;
+    }
+    removeStaleHosts(doc);
+    s.bucket = root.bucket;
+    setStickyTop(root.bucket, measureStickyTop(doc, win));
+
+    const mounted = await deps.mount(root.files);
+    if (session !== s) {
+      mounted.unmount();
+      return;
+    }
+    s.mounted = mounted;
+    const { sidebar } = mounted;
+
+    const open = await deps.prefs.getSidebarOpen();
+    if (session !== s) return;
+    applyLayout(root.bucket, open);
+    sidebar.setOpen(open);
+
+    sidebar.onToggleOpen((next) => {
+      applyLayout(root.bucket, next);
+      sidebar.setOpen(next);
+      void deps.prefs.setSidebarOpen(next);
+    });
+    sidebar.onSelectFile((path) =>
+      scrollToFile(path, {
+        files: root.files,
+        signal: s.abort.signal,
+        stickyTop: measureStickyTop(doc, win),
+        doc,
+        win,
+      }),
+    );
+    sidebar.onRetry(() => {
+      void load(s);
+    });
+    s.stopObserver = observeActiveFile(root.files, (path) => sidebar.setActive(path), win);
+
+    await load(s);
+  }
+
+  return {
+    get key() {
+      return session?.key ?? null;
+    },
+    async sync(url) {
+      try {
+        const parts = parseCompareUrl(url);
+        if (!parts) {
+          teardown();
+          return;
+        }
+        const key = compareKey(parts);
+        if (session?.key === key) return;
+        teardown();
+        await start(parts, key);
+      } catch (error) {
+        log('Unexpected error while syncing the compare tree', error);
+      }
+    },
+    dispose() {
+      teardown();
+    },
+  };
+}
