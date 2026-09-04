@@ -83,7 +83,11 @@ let spies: Spy[];
 let fetchMock: ReturnType<typeof vi.fn<(url: string) => Promise<Response>>>;
 let controller: Controller | null;
 
-function makeController(prefs: Prefs = memoryPrefs(), respond?: () => Response): Controller {
+function makeController(
+  prefs: Prefs = memoryPrefs(),
+  respond?: () => Response,
+  log: ReturnType<typeof vi.fn<(message: string, error?: unknown) => void>> = vi.fn(),
+): Controller {
   fetchMock = vi.fn(async () => (respond ?? (() => textResponse(EDGE)))());
   return createController({
     fetch: (url) => fetchMock(url),
@@ -104,7 +108,7 @@ function makeController(prefs: Prefs = memoryPrefs(), respond?: () => Response):
     },
     doc: document,
     win: window,
-    log: vi.fn(),
+    log,
     waitTimeoutMs: 200,
   });
 }
@@ -179,6 +183,21 @@ describe('controller happy path', () => {
       ]),
     ).resolves.toBe('pending');
   });
+
+  it('logs instead of throwing when saving the preference fails', async () => {
+    installComparePage(document, { tabCount: 13 });
+    const prefs = memoryPrefs();
+    prefs.setSidebarOpen = async () => {
+      throw new Error('storage gone');
+    };
+    const log = vi.fn();
+    controller = makeController(prefs, undefined, log);
+    await controller.sync(URL_A);
+    spies[0]!.toggle!(false);
+    await vi.waitFor(() =>
+      expect(log).toHaveBeenCalledWith('Failed to save the sidebar preference', expect.any(Error)),
+    );
+  });
 });
 
 describe('controller navigation', () => {
@@ -226,6 +245,54 @@ describe('controller navigation', () => {
     await controller.sync(URL_A);
     expect(spies).toHaveLength(0);
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(controller.key).toBeNull();
+  });
+
+  it('retries the same compare after giving up, once the file list exists', async () => {
+    document.body.innerHTML = '<div id="nothing"></div>';
+    controller = makeController();
+    await controller.sync(URL_A);
+    expect(controller.key).toBeNull();
+
+    installComparePage(document, { tabCount: 13 });
+    await controller.sync(URL_A);
+    expect(spies).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(controller.key).toBe('o/r/main...feature/a');
+  });
+
+  it('tears down and logs when mounting throws, so the next sync can retry', async () => {
+    installComparePage(document, { tabCount: 13 });
+    const log = vi.fn();
+    // Simulate a mount failure on the first attempt by pre-inserting a poison: the fake mount
+    // used by makeController cannot be made to throw, so build a controller with its own mount.
+    let attempts = 0;
+    fetchMock = vi.fn(async () => textResponse(EDGE));
+    controller = createController({
+      fetch: (url) => fetchMock(url),
+      prefs: memoryPrefs(),
+      mount: async (anchor) => {
+        attempts += 1;
+        if (attempts === 1) throw new Error('mount exploded');
+        const spy = spySidebar();
+        spies.push(spy);
+        const host = document.createElement(HOST_TAG);
+        anchor.parentElement!.insertBefore(host, anchor);
+        return { sidebar: spy.sidebar, unmount: () => host.remove() };
+      },
+      doc: document,
+      win: window,
+      log,
+      waitTimeoutMs: 200,
+    });
+    await controller.sync(URL_A);
+    expect(log).toHaveBeenCalledWith('Failed to set up the compare tree', expect.any(Error));
+    expect(controller.key).toBeNull();
+    expect(document.querySelectorAll(HOST_TAG)).toHaveLength(0);
+
+    await controller.sync(URL_A);
+    expect(spies).toHaveLength(1);
+    expect(controller.key).toBe('o/r/main...feature/a');
   });
 });
 

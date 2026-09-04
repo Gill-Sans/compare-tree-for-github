@@ -139,7 +139,19 @@ export function createController(deps: ControllerDeps): Controller {
       stopObserver: null,
     };
     session = s;
+    let ready = false;
+    try {
+      ready = await setUp(s);
+    } catch (error) {
+      if (!s.abort.signal.aborted) log('Failed to set up the compare tree', error);
+    }
+    // A session that never reached the loaded state must not linger: it would make `key`
+    // claim a sidebar that does not exist and block a retry on the same URL.
+    if (!ready && session === s) teardown();
+  }
 
+  /** Wait for GitHub's file list, mount and wire the sidebar, then load. False when nothing is showing. */
+  async function setUp(s: Session): Promise<boolean> {
     try {
       await waitFor(SELECTORS.files, {
         timeoutMs: deps.waitTimeoutMs ?? 15_000,
@@ -150,14 +162,14 @@ export function createController(deps: ControllerDeps): Controller {
       if (!s.abort.signal.aborted) {
         log('The compare file list did not appear; GitHub markup may have changed', error);
       }
-      return;
+      return false;
     }
-    if (session !== s) return;
+    if (session !== s) return false;
 
     const root = findDiffRoot(doc);
     if (!root) {
       log('The compare diff container was not found; GitHub markup may have changed');
-      return;
+      return false;
     }
     removeStaleHosts(doc);
     s.bucket = root.bucket;
@@ -166,20 +178,22 @@ export function createController(deps: ControllerDeps): Controller {
     const mounted = await deps.mount(root.files);
     if (session !== s) {
       mounted.unmount();
-      return;
+      return false;
     }
     s.mounted = mounted;
     const { sidebar } = mounted;
 
     const open = await deps.prefs.getSidebarOpen();
-    if (session !== s) return;
+    if (session !== s) return false;
     applyLayout(root.bucket, open);
     sidebar.setOpen(open);
 
     sidebar.onToggleOpen((next) => {
       applyLayout(root.bucket, next);
       sidebar.setOpen(next);
-      void deps.prefs.setSidebarOpen(next);
+      deps.prefs
+        .setSidebarOpen(next)
+        .catch((error: unknown) => log('Failed to save the sidebar preference', error));
     });
     sidebar.onSelectFile((path) =>
       scrollToFile(path, {
@@ -196,6 +210,7 @@ export function createController(deps: ControllerDeps): Controller {
     s.stopObserver = observeActiveFile(root.files, (path) => sidebar.setActive(path), win);
 
     await load(s);
+    return true;
   }
 
   return {
