@@ -1,0 +1,1443 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index cd93ab223d2..01c82f81960 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -31,6 +31,9 @@ jobs:
+         - Node.js 16.x
+         - Node.js 17.x
+         - Node.js 18.x
++        - Node.js 19.x
++        - Node.js 20.x
++        - Node.js 21.x
+ 
+         include:
+         - name: Node.js 0.10
+@@ -71,11 +74,11 @@ jobs:
+ 
+         - name: Node.js 8.x
+           node-version: "8.17"
+-          npm-i: mocha@7.2.0
++          npm-i: mocha@7.2.0 nyc@14.1.1
+ 
+         - name: Node.js 9.x
+           node-version: "9.11"
+-          npm-i: mocha@7.2.0
++          npm-i: mocha@7.2.0 nyc@14.1.1
+ 
+         - name: Node.js 10.x
+           node-version: "10.24"
+@@ -100,16 +103,25 @@ jobs:
+           node-version: "15.14"
+ 
+         - name: Node.js 16.x
+-          node-version: "16.17"
++          node-version: "16.20"
+ 
+         - name: Node.js 17.x
+           node-version: "17.9"
+ 
+         - name: Node.js 18.x
+-          node-version: "18.10"
++          node-version: "18.19"
++
++        - name: Node.js 19.x
++          node-version: "19.9"
++
++        - name: Node.js 20.x
++          node-version: "20.11"
++
++        - name: Node.js 21.x
++          node-version: "21.6"
+ 
+     steps:
+-    - uses: actions/checkout@v2
++    - uses: actions/checkout@v4
+ 
+     - name: Install Node.js ${{ matrix.node-version }}
+       shell: bash -eo pipefail -l {0}
+@@ -120,7 +132,11 @@ jobs:
+     - name: Configure npm
+       run: |
+         npm config set loglevel error
+-        npm config set shrinkwrap false
++        if [[ "$(npm config get package-lock)" == "true" ]]; then
++          npm config set package-lock false
++        else
++          npm config set shrinkwrap false
++        fi
+ 
+     - name: Install npm module(s) ${{ matrix.npm-i }}
+       run: npm install --save-dev ${{ matrix.npm-i }}
+@@ -151,29 +167,52 @@ jobs:
+         echo "node@$(node -v)"
+         echo "npm@$(npm -v)"
+         npm -s ls ||:
+-        (npm -s ls --depth=0 ||:) | awk -F'[ @]' 'NR>1 && $2 { print "::set-output name=" $2 "::" $3 }'
++        (npm -s ls --depth=0 ||:) | awk -F'[ @]' 'NR>1 && $2 { print $2 "=" $3 }' >> "$GITHUB_OUTPUT"
+ 
+     - name: Run tests
+       shell: bash
+-      run: npm run test-ci
++      run: |
++        npm run test-ci
++        cp coverage/lcov.info "coverage/${{ matrix.name }}.lcov"
+ 
+     - name: Lint code
+       if: steps.list_env.outputs.eslint != ''
+       run: npm run lint
+ 
+     - name: Collect code coverage
+-      uses: coverallsapp/github-action@master
++      run: |
++        mv ./coverage "./${{ matrix.name }}"
++        mkdir ./coverage
++        mv "./${{ matrix.name }}" "./coverage/${{ matrix.name }}"
++
++    - name: Upload code coverage
++      uses: actions/upload-artifact@v3
+       with:
+-        github-token: ${{ secrets.GITHUB_TOKEN }}
+-        flag-name: run-${{ matrix.test_number }}
+-        parallel: true
++        name: coverage
++        path: ./coverage
++        retention-days: 1
+ 
+   coverage:
+     needs: test
+     runs-on: ubuntu-latest
+     steps:
+-    - name: Upload code coverage
++    - uses: actions/checkout@v4
++
++    - name: Install lcov
++      shell: bash
++      run: sudo apt-get -y install lcov
++
++    - name: Collect coverage reports
++      uses: actions/download-artifact@v3
++      with:
++        name: coverage
++        path: ./coverage
++
++    - name: Merge coverage reports
++      shell: bash
++      run: find ./coverage -name lcov.info -exec printf '-a %q\n' {} \; | xargs lcov -o ./coverage/lcov.info
++
++    - name: Upload coverage report
+       uses: coverallsapp/github-action@master
+       with:
+-        github-token: ${{ secrets.github_token }}
+-        parallel-finished: true
++        github-token: ${{ secrets.GITHUB_TOKEN }}
+diff --git a/Contributing.md b/Contributing.md
+index 485dee597e1..a9ba84690cb 100644
+--- a/Contributing.md
++++ b/Contributing.md
+@@ -12,6 +12,7 @@ contributors can be involved in decision making.
+ 
+ * A **Contributor** is any individual creating or commenting on an issue or pull request.
+ * A **Committer** is a subset of contributors who have been given write access to the repository.
++* A **Project Captain** is the lead maintainer of a repository.
+ * A **TC (Technical Committee)** is a group of committers representing the required technical
+ expertise to resolve rare disputes.
+ * A **Triager** is a subset of contributors who have been given triage access to the repository.
+@@ -102,12 +103,74 @@ If a consensus cannot be reached that has no objections then a majority wins vot
+ is called. It is also expected that the majority of decisions made by the TC are via
+ a consensus seeking process and that voting is only used as a last-resort.
+ 
+-Resolution may involve returning the issue to committers with suggestions on how to
+-move forward towards a consensus. It is not expected that a meeting of the TC
++Resolution may involve returning the issue to project captains with suggestions on
++how to move forward towards a consensus. It is not expected that a meeting of the TC
+ will resolve all issues on its agenda during that meeting and may prefer to continue
+-the discussion happening among the committers.
++the discussion happening among the project captains.
+ 
+-Members can be added to the TC at any time. Any committer can nominate another committer
++Members can be added to the TC at any time. Any TC member can nominate another committer
+ to the TC and the TC uses its standard consensus seeking process to evaluate whether or
+-not to add this new member. Members who do not participate consistently at the level of
+-a majority of the other members are expected to resign.
++not to add this new member. The TC will consist of a minimum of 3 active members and a
++maximum of 10. If the TC should drop below 5 members the active TC members should nominate
++someone new. If a TC member is stepping down, they are encouraged (but not required) to
++nominate someone to take their place.
++
++TC members will be added as admin's on the Github orgs, npm orgs, and other resources as
++necessary to be effective in the role.
++
++To remain "active" a TC member should have participation within the last 12 months and miss
++no more than six consecutive TC meetings. Our goal is to increase participation, not punish
++people for any lack of participation, this guideline should be only be used as such
++(replace an inactive member with a new active one, for example). Members who do not meet this
++are expected to step down. If A TC member does not step down, an issue can be opened in the
++discussions repo to move them to inactive status. TC members who step down or are removed due
++to inactivity will be moved into inactive status.
++
++Inactive status members can become active members by self nomination if the TC is not already
++larger than the maximum of 10. They will also be given preference if, while at max size, an
++active member steps down.
++
++## Project Captains
++
++The Express TC can designate captains for individual projects/repos in the
++organizations. These captains are responsible for being the primary
++day-to-day maintainers of the repo on a technical and community front.
++Repo captains are empowered with repo ownership and package publication rights.
++When there are conflicts, especially on topics that effect the Express project
++at large, captains are responsible to raise it up to the TC and drive
++those conflicts to resolution. Captains are also responsible for making sure
++community members follow the community guidelines, maintaining the repo
++and the published package, as well as in providing user support.
++
++Like TC members, Repo captains are a subset of committers.
++
++To become a captain for a project the candidate is expected to participate in that
++project for at least 6 months as a committer prior to the request. They should have
++helped with code contributions as well as triaging issues. They are also required to
++have 2FA enabled on both their GitHub and npm accounts. Any TC member or existing
++captain on the repo can nominate another committer to the captain role, submit a PR to
++this doc, under `Current Project Captains` section (maintaining the sort order) with
++the project, their GitHub handle and npm username (if different). The PR will require
++at least 2 approvals from TC members and 2 weeks hold time to allow for comment and/or
++dissent.  When the PR is merged, a TC member will add them to the proper GitHub/npm groups.
++
++### Current Project Captains
++
++- `expressjs/express`: @wesleytodd
++- `expressjs/discussions`: @wesleytodd
++- `expressjs/expressjs.com`: @crandmck
++- `expressjs/body-parser`: @wesleytodd
++- `expressjs/multer`: @LinusU
++- `expressjs/cookie-parser`: @wesleytodd
++- `expressjs/generator`: @wesleytodd
++- `expressjs/statusboard`: @wesleytodd
++- `pillarjs/path-to-regexp`: @blakeembrey
++- `pillarjs/router`: @dougwilson, @wesleytodd
++- `pillarjs/finalhandler`: @wesleytodd
++- `pillarjs/request`: @wesleytodd
++- `jshttp/http-errors`: @wesleytodd
++- `jshttp/cookie`: @wesleytodd
++- `jshttp/on-finished`: @wesleytodd
++- `jshttp/forwarded`: @wesleytodd
++- `jshttp/proxy-addr`: @wesleytodd
++
+diff --git a/History.md b/History.md
+index e49870fed0b..ac2e7cf719d 100644
+--- a/History.md
++++ b/History.md
+@@ -1,3 +1,30 @@
++4.19.2 / 2024-03-25
++==========
++
++  * Improved fix for open redirect allow list bypass
++
++4.19.1 / 2024-03-20
++==========
++
++  * Allow passing non-strings to res.location with new encoding handling checks
++
++4.19.0 / 2024-03-20
++==========
++
++  * Prevent open redirect allow list bypass due to encodeurl
++  * deps: cookie@0.6.0
++
++4.18.3 / 2024-02-29
++==========
++
++  * Fix routing requests without method
++  * deps: body-parser@1.20.2
++    - Fix strict json error message on Node.js 19+
++    - deps: content-type@~1.0.5
++    - deps: raw-body@2.5.2
++  * deps: cookie@0.6.0
++    - Add `partitioned` option
++
+ 4.18.2 / 2022-10-08
+ ===================
+ 
+@@ -2111,7 +2138,7 @@
+  * deps: connect@2.21.0
+    - deprecate `connect(middleware)` -- use `app.use(middleware)` instead
+    - deprecate `connect.createServer()` -- use `connect()` instead
+-   - fix `res.setHeader()` patch to work with with get -> append -> set pattern
++   - fix `res.setHeader()` patch to work with get -> append -> set pattern
+    - deps: compression@~1.0.8
+    - deps: errorhandler@~1.1.1
+    - deps: express-session@~1.5.0
+@@ -3322,8 +3349,8 @@ Shaw]
+   * Added node v0.1.97 compatibility
+   * Added support for deleting cookies via Request#cookie('key', null)
+   * Updated haml submodule
+-  * Fixed not-found page, now using using charset utf-8
+-  * Fixed show-exceptions page, now using using charset utf-8
++  * Fixed not-found page, now using charset utf-8
++  * Fixed show-exceptions page, now using charset utf-8
+   * Fixed view support due to fs.readFile Buffers
+   * Changed; mime.type() no longer accepts ".type" due to node extname() changes
+ 
+@@ -3358,7 +3385,7 @@ Shaw]
+ ==================
+ 
+   * Added charset support via Request#charset (automatically assigned to 'UTF-8' when respond()'s
+-    encoding is set to 'utf8' or 'utf-8'.
++    encoding is set to 'utf8' or 'utf-8').
+   * Added "encoding" option to Request#render(). Closes #299
+   * Added "dump exceptions" setting, which is enabled by default.
+   * Added simple ejs template engine support
+@@ -3397,7 +3424,7 @@ Shaw]
+   * Added [haml.js](http://github.com/visionmedia/haml.js) submodule; removed haml-js
+   * Added callback function support to Request#halt() as 3rd/4th arg
+   * Added preprocessing of route param wildcards using param(). Closes #251
+-  * Added view partial support (with collections etc)
++  * Added view partial support (with collections etc.)
+   * Fixed bug preventing falsey params (such as ?page=0). Closes #286
+   * Fixed setting of multiple cookies. Closes #199
+   * Changed; view naming convention is now NAME.TYPE.ENGINE (for example page.html.haml)
+diff --git a/Readme.md b/Readme.md
+index 0936816bedb..d0f3cf56e6d 100644
+--- a/Readme.md
++++ b/Readme.md
+@@ -104,7 +104,7 @@ $ npm start
+   To view the examples, clone the Express repo and install the dependencies:
+ 
+ ```console
+-$ git clone git://github.com/expressjs/express.git --depth 1
++$ git clone https://github.com/expressjs/express.git --depth 1
+ $ cd express
+ $ npm install
+ ```
+diff --git a/Release-Process.md b/Release-Process.md
+index ae740972f77..55e62189250 100644
+--- a/Release-Process.md
++++ b/Release-Process.md
+@@ -184,3 +184,9 @@ $ npm publish
+ 
+ **NOTE:** The version number to publish will be picked up automatically from
+           package.json.
++          
++### Step 7. Update documentation website
++
++The documentation website https://expressjs.com/ documents the current release version in various places.  For a new release:
++1. Change the value of `current_version` in https://github.com/expressjs/expressjs.com/blob/gh-pages/_data/express.yml to match the latest version number.
++2. Add a new section to the change log.  For example, for a 4.x release, https://github.com/expressjs/expressjs.com/blob/gh-pages/en/changelog/4x.md,
+diff --git a/appveyor.yml b/appveyor.yml
+index 1fca21801e8..ce26523b3aa 100644
+--- a/appveyor.yml
++++ b/appveyor.yml
+@@ -17,9 +17,12 @@ environment:
+     - nodejs_version: "13.14"
+     - nodejs_version: "14.20"
+     - nodejs_version: "15.14"
+-    - nodejs_version: "16.17"
++    - nodejs_version: "16.20"
+     - nodejs_version: "17.9"
+-    - nodejs_version: "18.10"
++    - nodejs_version: "18.19"
++    - nodejs_version: "19.9"
++    - nodejs_version: "20.11"
++    - nodejs_version: "21.6"
+ cache:
+   - node_modules
+ install:
+@@ -30,7 +33,11 @@ install:
+   # Configure npm
+   - ps: |
+       npm config set loglevel error
+-      npm config set shrinkwrap false
++      if ((npm config get package-lock) -eq "true") {
++        npm config set package-lock false
++      } else {
++        npm config set shrinkwrap false
++      }
+   # Remove all non-test dependencies
+   - ps: |
+       # Remove example dependencies
+@@ -65,12 +72,12 @@ install:
+       # nyc for test coverage
+       # - use 10.3.2 for Node.js < 4
+       # - use 11.9.0 for Node.js < 6
+-      # - use 14.1.1 for Node.js < 8
++      # - use 14.1.1 for Node.js < 10
+       if ([int]$env:nodejs_version.split(".")[0] -lt 4) {
+         npm install --silent --save-dev nyc@10.3.2
+       } elseif ([int]$env:nodejs_version.split(".")[0] -lt 6) {
+         npm install --silent --save-dev nyc@11.9.0
+-      } elseif ([int]$env:nodejs_version.split(".")[0] -lt 8) {
++      } elseif ([int]$env:nodejs_version.split(".")[0] -lt 10) {
+         npm install --silent --save-dev nyc@14.1.1
+       }
+   - ps: |
+diff --git a/benchmarks/README.md b/benchmarks/README.md
+new file mode 100644
+index 00000000000..1894c527d63
+--- /dev/null
++++ b/benchmarks/README.md
+@@ -0,0 +1,34 @@
++# Express Benchmarks
++
++## Installation
++
++You will need to install [wrk](https://github.com/wg/wrk/blob/master/INSTALL) in order to run the benchmarks.
++
++## Running
++
++To run the benchmarks, first install the dependencies `npm i`, then run `make`
++
++The output will look something like this:
++
++```
++  50 connections
++  1 middleware
++ 7.15ms
++ 6784.01
++
++ [...redacted...]
++
++  1000 connections
++  10 middleware
++ 139.21ms
++ 6155.19
++
++```
++
++### Tip: Include Node.js version in output
++
++You can use `make && node -v` to include the node.js version in the output.
++
++### Tip: Save the results to a file
++
++You can use `make > results.log` to save the results to a file `results.log`.
+diff --git a/examples/README.md b/examples/README.md
+index c19ed30a25c..bd1f1f6310f 100644
+--- a/examples/README.md
++++ b/examples/README.md
+@@ -13,7 +13,6 @@ This page contains list of examples using Express.
+ - [hello-world](./hello-world) - Simple request handler
+ - [markdown](./markdown) - Markdown as template engine
+ - [multi-router](./multi-router) - Working with multiple Express routers
+-- [multipart](./multipart) - Accepting multipart-encoded forms
+ - [mvc](./mvc) - MVC-style controllers
+ - [online](./online) - Tracking online user activity with `online` and `redis` packages
+ - [params](./params) - Working with route parameters
+diff --git a/examples/cookie-sessions/index.js b/examples/cookie-sessions/index.js
+index 01c731c1c8f..83b6faee82b 100644
+--- a/examples/cookie-sessions/index.js
++++ b/examples/cookie-sessions/index.js
+@@ -13,13 +13,10 @@ var app = module.exports = express();
+ app.use(cookieSession({ secret: 'manny is cool' }));
+ 
+ // do something with the session
+-app.use(count);
+-
+-// custom middleware
+-function count(req, res) {
++app.get('/', function (req, res) {
+   req.session.count = (req.session.count || 0) + 1
+   res.send('viewed ' + req.session.count + ' times\n')
+-}
++})
+ 
+ /* istanbul ignore next */
+ if (!module.parent) {
+diff --git a/examples/error/index.js b/examples/error/index.js
+index d922de06cc4..d733a81172d 100644
+--- a/examples/error/index.js
++++ b/examples/error/index.js
+@@ -26,7 +26,7 @@ function error(err, req, res, next) {
+   res.send('Internal Server Error');
+ }
+ 
+-app.get('/', function(req, res){
++app.get('/', function () {
+   // Caught and passed down to the errorHandler middleware
+   throw new Error('something broke!');
+ });
+diff --git a/examples/markdown/index.js b/examples/markdown/index.js
+index 74ac05e77f3..23d645e66b2 100644
+--- a/examples/markdown/index.js
++++ b/examples/markdown/index.js
+@@ -26,7 +26,7 @@ app.engine('md', function(path, options, fn){
+ 
+ app.set('views', path.join(__dirname, 'views'));
+ 
+-// make it the default so we dont need .md
++// make it the default, so we don't need .md
+ app.set('view engine', 'md');
+ 
+ app.get('/', function(req, res){
+diff --git a/examples/multipart/index.js b/examples/multipart/index.js
+deleted file mode 100644
+index ea7b86e0c94..00000000000
+--- a/examples/multipart/index.js
++++ /dev/null
+@@ -1,62 +0,0 @@
+-'use strict'
+-
+-/**
+- * Module dependencies.
+- */
+-
+-var express = require('../..');
+-var multiparty = require('multiparty');
+-var format = require('util').format;
+-
+-var app = module.exports = express();
+-
+-app.get('/', function(req, res){
+-  res.send('<form method="post" enctype="multipart/form-data">'
+-    + '<p>Title: <input type="text" name="title" /></p>'
+-    + '<p>Image: <input type="file" name="image" /></p>'
+-    + '<p><input type="submit" value="Upload" /></p>'
+-    + '</form>');
+-});
+-
+-app.post('/', function(req, res, next){
+-  // create a form to begin parsing
+-  var form = new multiparty.Form();
+-  var image;
+-  var title;
+-
+-  form.on('error', next);
+-  form.on('close', function(){
+-    res.send(format('\nuploaded %s (%d Kb) as %s'
+-      , image.filename
+-      , image.size / 1024 | 0
+-      , title));
+-  });
+-
+-  // listen on field event for title
+-  form.on('field', function(name, val){
+-    if (name !== 'title') return;
+-    title = val;
+-  });
+-
+-  // listen on part event for image file
+-  form.on('part', function(part){
+-    if (!part.filename) return;
+-    if (part.name !== 'image') return part.resume();
+-    image = {};
+-    image.filename = part.filename;
+-    image.size = 0;
+-    part.on('data', function(buf){
+-      image.size += buf.length;
+-    });
+-  });
+-
+-
+-  // parse the form
+-  form.parse(req);
+-});
+-
+-/* istanbul ignore next */
+-if (!module.parent) {
+-  app.listen(4000);
+-  console.log('Express started on port 4000');
+-}
+diff --git a/examples/view-locals/index.js b/examples/view-locals/index.js
+index bf52d2a85ad..a2af24f3553 100644
+--- a/examples/view-locals/index.js
++++ b/examples/view-locals/index.js
+@@ -61,7 +61,7 @@ function users(req, res, next) {
+   })
+ }
+ 
+-app.get('/middleware', count, users, function(req, res, next){
++app.get('/middleware', count, users, function (req, res) {
+   res.render('index', {
+     title: 'Users',
+     count: req.count,
+@@ -99,7 +99,7 @@ function users2(req, res, next) {
+   })
+ }
+ 
+-app.get('/middleware-locals', count2, users2, function(req, res, next){
++app.get('/middleware-locals', count2, users2, function (req, res) {
+   // you can see now how we have much less
+   // to pass to res.render(). If we have
+   // several routes related to users this
+diff --git a/examples/web-service/index.js b/examples/web-service/index.js
+index a2cd2cb7f90..d1a90362153 100644
+--- a/examples/web-service/index.js
++++ b/examples/web-service/index.js
+@@ -72,12 +72,12 @@ var userRepos = {
+ // and simply expose the data
+ 
+ // example: http://localhost:3000/api/users/?api-key=foo
+-app.get('/api/users', function(req, res, next){
++app.get('/api/users', function (req, res) {
+   res.send(users);
+ });
+ 
+ // example: http://localhost:3000/api/repos/?api-key=foo
+-app.get('/api/repos', function(req, res, next){
++app.get('/api/repos', function (req, res) {
+   res.send(repos);
+ });
+ 
+diff --git a/lib/response.js b/lib/response.js
+index fede486c06d..dd7b3c8201d 100644
+--- a/lib/response.js
++++ b/lib/response.js
+@@ -55,6 +55,7 @@ module.exports = res
+  */
+ 
+ var charsetRegExp = /;\s*charset\s*=/;
++var schemaAndHostRegExp = /^(?:[a-zA-Z][a-zA-Z0-9+.-]*:)?\/\/[^\\\/\?]+/;
+ 
+ /**
+  * Set status `code`.
+@@ -904,15 +905,23 @@ res.cookie = function (name, value, options) {
+  */
+ 
+ res.location = function location(url) {
+-  var loc = url;
++  var loc;
+ 
+   // "back" is an alias for the referrer
+   if (url === 'back') {
+     loc = this.req.get('Referrer') || '/';
++  } else {
++    loc = String(url);
+   }
+ 
+-  // set location
+-  return this.set('Location', encodeUrl(loc));
++  var m = schemaAndHostRegExp.exec(loc);
++  var pos = m ? m[0].length + 1 : 0;
++
++  // Only encode after host to avoid invalid encoding which can introduce
++  // vulnerabilities (e.g. `\\` to `%5C`).
++  loc = loc.slice(0, pos) + encodeUrl(loc.slice(pos));
++
++  return this.set('Location', loc);
+ };
+ 
+ /**
+diff --git a/lib/router/index.js b/lib/router/index.js
+index 5174c34f455..abb3a6f589e 100644
+--- a/lib/router/index.js
++++ b/lib/router/index.js
+@@ -36,7 +36,7 @@ var toString = Object.prototype.toString;
+  * Initialize a new `Router` with the given `options`.
+  *
+  * @param {Object} [options]
+- * @return {Router} which is an callable function
++ * @return {Router} which is a callable function
+  * @public
+  */
+ 
+diff --git a/lib/router/route.js b/lib/router/route.js
+index cc643ac8bdb..a65756d6de6 100644
+--- a/lib/router/route.js
++++ b/lib/router/route.js
+@@ -60,7 +60,10 @@ Route.prototype._handles_method = function _handles_method(method) {
+     return true;
+   }
+ 
+-  var name = method.toLowerCase();
++  // normalize name
++  var name = typeof method === 'string'
++    ? method.toLowerCase()
++    : method
+ 
+   if (name === 'head' && !this.methods['head']) {
+     name = 'get';
+@@ -103,8 +106,10 @@ Route.prototype.dispatch = function dispatch(req, res, done) {
+   if (stack.length === 0) {
+     return done();
+   }
++  var method = typeof req.method === 'string'
++    ? req.method.toLowerCase()
++    : req.method
+ 
+-  var method = req.method.toLowerCase();
+   if (method === 'head' && !this.methods['head']) {
+     method = 'get';
+   }
+diff --git a/lib/utils.js b/lib/utils.js
+index 799a6a2b4ee..56e12b9b541 100644
+--- a/lib/utils.js
++++ b/lib/utils.js
+@@ -117,17 +117,15 @@ exports.contentDisposition = deprecate.function(contentDisposition,
+ /**
+  * Parse accept params `str` returning an
+  * object with `.value`, `.quality` and `.params`.
+- * also includes `.originalIndex` for stable sorting
+  *
+  * @param {String} str
+- * @param {Number} index
+  * @return {Object}
+  * @api private
+  */
+ 
+-function acceptParams(str, index) {
++function acceptParams (str) {
+   var parts = str.split(/ *; */);
+-  var ret = { value: parts[0], quality: 1, params: {}, originalIndex: index };
++  var ret = { value: parts[0], quality: 1, params: {} }
+ 
+   for (var i = 1; i < parts.length; ++i) {
+     var pms = parts[i].split(/ *= */);
+@@ -282,6 +280,7 @@ function createETagGenerator (options) {
+ /**
+  * Parse an extended query string with qs.
+  *
++ * @param {String} str
+  * @return {Object}
+  * @private
+  */
+diff --git a/package.json b/package.json
+index 0996637deaa..f299d882b0d 100644
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "express",
+   "description": "Fast, unopinionated, minimalist web framework",
+-  "version": "4.18.2",
++  "version": "4.19.2",
+   "author": "TJ Holowaychuk <tj@vision-media.ca>",
+   "contributors": [
+     "Aaron Heckmann <aaron.heckmann+github@gmail.com>",
+@@ -30,10 +30,10 @@
+   "dependencies": {
+     "accepts": "~1.3.8",
+     "array-flatten": "1.1.1",
+-    "body-parser": "1.20.1",
++    "body-parser": "1.20.2",
+     "content-disposition": "0.5.4",
+     "content-type": "~1.0.4",
+-    "cookie": "0.5.0",
++    "cookie": "0.6.0",
+     "cookie-signature": "1.0.6",
+     "debug": "2.6.9",
+     "depd": "2.0.0",
+@@ -65,15 +65,14 @@
+     "connect-redis": "3.4.2",
+     "cookie-parser": "1.4.6",
+     "cookie-session": "2.0.0",
+-    "ejs": "3.1.8",
+-    "eslint": "8.24.0",
++    "ejs": "3.1.9",
++    "eslint": "8.47.0",
+     "express-session": "1.17.2",
+     "hbs": "4.2.0",
+     "marked": "0.7.0",
+     "method-override": "3.0.0",
+-    "mocha": "10.0.0",
++    "mocha": "10.2.0",
+     "morgan": "1.10.0",
+-    "multiparty": "4.2.3",
+     "nyc": "15.1.0",
+     "pbkdf2-password": "1.2.1",
+     "supertest": "6.3.0",
+diff --git a/test/Route.js b/test/Route.js
+index 64dbad60ce9..2a37b9a4839 100644
+--- a/test/Route.js
++++ b/test/Route.js
+@@ -124,7 +124,7 @@ describe('Route', function(){
+       var req = { method: 'POST', url: '/' };
+       var route = new Route('');
+ 
+-      route.get(function(req, res, next) {
++      route.get(function () {
+         throw new Error('not me!');
+       })
+ 
+@@ -198,7 +198,7 @@ describe('Route', function(){
+       var req = { order: '', method: 'GET', url: '/' };
+       var route = new Route('');
+ 
+-      route.all(function(req, res, next){
++      route.all(function () {
+         throw new Error('foobar');
+       });
+ 
+@@ -224,7 +224,7 @@ describe('Route', function(){
+       var req = { method: 'GET', url: '/' };
+       var route = new Route('');
+ 
+-      route.get(function(req, res, next){
++      route.get(function () {
+         throw new Error('boom!');
+       });
+ 
+diff --git a/test/Router.js b/test/Router.js
+index 0d0502ab40d..b22001a9ff2 100644
+--- a/test/Router.js
++++ b/test/Router.js
+@@ -61,6 +61,33 @@ describe('Router', function(){
+     router.handle({ method: 'GET' }, {}, done)
+   })
+ 
++  it('handle missing method', function (done) {
++    var all = false
++    var router = new Router()
++    var route = router.route('/foo')
++    var use = false
++
++    route.post(function (req, res, next) { next(new Error('should not run')) })
++    route.all(function (req, res, next) {
++      all = true
++      next()
++    })
++    route.get(function (req, res, next) { next(new Error('should not run')) })
++
++    router.get('/foo', function (req, res, next) { next(new Error('should not run')) })
++    router.use(function (req, res, next) {
++      use = true
++      next()
++    })
++
++    router.handle({ url: '/foo' }, {}, function (err) {
++      if (err) return done(err)
++      assert.ok(all)
++      assert.ok(use)
++      done()
++    })
++  })
++
+   it('should not stack overflow with many registered routes', function(done){
+     this.timeout(5000) // long-running test
+ 
+@@ -201,7 +228,7 @@ describe('Router', function(){
+     it('should handle throwing inside routes with params', function(done) {
+       var router = new Router();
+ 
+-      router.get('/foo/:id', function(req, res, next){
++      router.get('/foo/:id', function () {
+         throw new Error('foo');
+       });
+ 
+@@ -579,8 +606,8 @@ describe('Router', function(){
+       var req2 = { url: '/foo/10/bar', method: 'get' };
+       var router = new Router();
+       var sub = new Router();
++      var cb = after(2, done)
+ 
+-      done = after(2, done);
+ 
+       sub.get('/bar', function(req, res, next) {
+         next();
+@@ -599,14 +626,14 @@ describe('Router', function(){
+         assert.ifError(err);
+         assert.equal(req1.ms, 50);
+         assert.equal(req1.originalUrl, '/foo/50/bar');
+-        done();
++        cb()
+       });
+ 
+       router.handle(req2, {}, function(err) {
+         assert.ifError(err);
+         assert.equal(req2.ms, 10);
+         assert.equal(req2.originalUrl, '/foo/10/bar');
+-        done();
++        cb()
+       });
+     });
+   });
+diff --git a/test/app.listen.js b/test/app.listen.js
+index 08eeaaa63c2..5b150063b9e 100644
+--- a/test/app.listen.js
++++ b/test/app.listen.js
+@@ -6,9 +6,8 @@ describe('app.listen()', function(){
+   it('should wrap with an HTTP server', function(done){
+     var app = express();
+ 
+-    var server = app.listen(9999, function(){
+-      server.close();
+-      done();
++    var server = app.listen(0, function () {
++      server.close(done)
+     });
+   })
+ })
+diff --git a/test/app.param.js b/test/app.param.js
+index 8893851f9d5..b4ccc8a2d12 100644
+--- a/test/app.param.js
++++ b/test/app.param.js
+@@ -166,7 +166,7 @@ describe('app', function(){
+       app.get('/:user', function(req, res, next) {
+         next('route');
+       });
+-      app.get('/:user', function(req, res, next) {
++      app.get('/:user', function (req, res) {
+         res.send(req.params.user);
+       });
+ 
+@@ -187,11 +187,11 @@ describe('app', function(){
+         next(new Error('invalid invocation'))
+       });
+ 
+-      app.post('/:user', function(req, res, next) {
++      app.post('/:user', function (req, res) {
+         res.send(req.params.user);
+       });
+ 
+-      app.get('/:thing', function(req, res, next) {
++      app.get('/:thing', function (req, res) {
+         res.send(req.thing);
+       });
+ 
+diff --git a/test/app.router.js b/test/app.router.js
+index 3069a22c772..12b6c1fa519 100644
+--- a/test/app.router.js
++++ b/test/app.router.js
+@@ -90,7 +90,7 @@ describe('app.router', function(){
+     it('should decode correct params', function(done){
+       var app = express();
+ 
+-      app.get('/:name', function(req, res, next){
++      app.get('/:name', function (req, res) {
+         res.send(req.params.name);
+       });
+ 
+@@ -102,7 +102,7 @@ describe('app.router', function(){
+     it('should not accept params in malformed paths', function(done) {
+       var app = express();
+ 
+-      app.get('/:name', function(req, res, next){
++      app.get('/:name', function (req, res) {
+         res.send(req.params.name);
+       });
+ 
+@@ -114,7 +114,7 @@ describe('app.router', function(){
+     it('should not decode spaces', function(done) {
+       var app = express();
+ 
+-      app.get('/:name', function(req, res, next){
++      app.get('/:name', function (req, res) {
+         res.send(req.params.name);
+       });
+ 
+@@ -126,7 +126,7 @@ describe('app.router', function(){
+     it('should work with unicode', function(done) {
+       var app = express();
+ 
+-      app.get('/:name', function(req, res, next){
++      app.get('/:name', function (req, res) {
+         res.send(req.params.name);
+       });
+ 
+@@ -896,7 +896,7 @@ describe('app.router', function(){
+ 
+       request(app)
+         .get('/foo.json')
+-        .expect(200, 'foo as json', done)
++        .expect(200, 'foo as json', cb)
+     })
+   })
+ 
+@@ -910,7 +910,7 @@ describe('app.router', function(){
+         next();
+       });
+ 
+-      app.get('/bar', function(req, res){
++      app.get('/bar', function () {
+         assert(0);
+       });
+ 
+@@ -919,7 +919,7 @@ describe('app.router', function(){
+         next();
+       });
+ 
+-      app.get('/foo', function(req, res, next){
++      app.get('/foo', function (req, res) {
+         calls.push('/foo 2');
+         res.json(calls)
+       });
+@@ -939,7 +939,7 @@ describe('app.router', function(){
+         next('route')
+       }
+ 
+-      app.get('/foo', fn, function(req, res, next){
++      app.get('/foo', fn, function (req, res) {
+         res.end('failure')
+       });
+ 
+@@ -964,11 +964,11 @@ describe('app.router', function(){
+         next('router')
+       }
+ 
+-      router.get('/foo', fn, function (req, res, next) {
++      router.get('/foo', fn, function (req, res) {
+         res.end('failure')
+       })
+ 
+-      router.get('/foo', function (req, res, next) {
++      router.get('/foo', function (req, res) {
+         res.end('failure')
+       })
+ 
+@@ -995,7 +995,7 @@ describe('app.router', function(){
+         next();
+       });
+ 
+-      app.get('/bar', function(req, res){
++      app.get('/bar', function () {
+         assert(0);
+       });
+ 
+@@ -1004,7 +1004,7 @@ describe('app.router', function(){
+         next(new Error('fail'));
+       });
+ 
+-      app.get('/foo', function(req, res, next){
++      app.get('/foo', function () {
+         assert(0);
+       });
+ 
+diff --git a/test/app.use.js b/test/app.use.js
+index fd9b1751a31..1de3275c8e2 100644
+--- a/test/app.use.js
++++ b/test/app.use.js
+@@ -57,7 +57,7 @@ describe('app', function(){
+ 
+       request(app)
+         .get('/forum')
+-        .expect(200, 'forum', done)
++        .expect(200, 'forum', cb)
+     })
+ 
+     it('should set the child\'s .parent', function(){
+diff --git a/test/express.json.js b/test/express.json.js
+index a8cfebc41e2..f6f536b15e5 100644
+--- a/test/express.json.js
++++ b/test/express.json.js
+@@ -262,7 +262,7 @@ describe('express.json()', function () {
+           .post('/')
+           .set('Content-Type', 'application/json')
+           .send('true')
+-          .expect(400, '[entity.parse.failed] ' + parseError('#rue').replace('#', 't'), done)
++          .expect(400, '[entity.parse.failed] ' + parseError('#rue').replace(/#/g, 't'), done)
+       })
+     })
+ 
+@@ -290,7 +290,7 @@ describe('express.json()', function () {
+           .post('/')
+           .set('Content-Type', 'application/json')
+           .send('true')
+-          .expect(400, '[entity.parse.failed] ' + parseError('#rue').replace('#', 't'), done)
++          .expect(400, '[entity.parse.failed] ' + parseError('#rue').replace(/#/g, 't'), done)
+       })
+ 
+       it('should not parse primitives with leading whitespaces', function (done) {
+@@ -298,7 +298,7 @@ describe('express.json()', function () {
+           .post('/')
+           .set('Content-Type', 'application/json')
+           .send('    true')
+-          .expect(400, '[entity.parse.failed] ' + parseError('    #rue').replace('#', 't'), done)
++          .expect(400, '[entity.parse.failed] ' + parseError('    #rue').replace(/#/g, 't'), done)
+       })
+ 
+       it('should allow leading whitespaces in JSON', function (done) {
+@@ -316,7 +316,7 @@ describe('express.json()', function () {
+           .set('X-Error-Property', 'stack')
+           .send('true')
+           .expect(400)
+-          .expect(shouldContainInBody(parseError('#rue').replace('#', 't')))
++          .expect(shouldContainInBody(parseError('#rue').replace(/#/g, 't')))
+           .end(done)
+       })
+     })
+diff --git a/test/res.cookie.js b/test/res.cookie.js
+index 93deb769887..c837820605c 100644
+--- a/test/res.cookie.js
++++ b/test/res.cookie.js
+@@ -82,6 +82,22 @@ describe('res', function(){
+       })
+     })
+ 
++    describe('partitioned', function () {
++      it('should set partitioned', function (done) {
++        var app = express();
++
++        app.use(function (req, res) {
++          res.cookie('name', 'tobi', { partitioned: true });
++          res.end();
++        });
++
++        request(app)
++          .get('/')
++          .expect('Set-Cookie', 'name=tobi; Path=/; Partitioned')
++          .expect(200, done)
++      })
++    })
++
+     describe('maxAge', function(){
+       it('should set relative expires', function(done){
+         var app = express();
+diff --git a/test/res.format.js b/test/res.format.js
+index 45243d17a1b..cba6fe136b1 100644
+--- a/test/res.format.js
++++ b/test/res.format.js
+@@ -61,7 +61,7 @@ app3.use(function(req, res, next){
+ 
+ var app4 = express();
+ 
+-app4.get('/', function(req, res, next){
++app4.get('/', function (req, res) {
+   res.format({
+     text: function(){ res.send('hey') },
+     html: function(){ res.send('<p>hey</p>') },
+@@ -155,7 +155,7 @@ describe('res', function(){
+       var app = express();
+       var router = express.Router();
+ 
+-      router.get('/', function(req, res, next){
++      router.get('/', function (req, res) {
+         res.format({
+           text: function(){ res.send('hey') },
+           html: function(){ res.send('<p>hey</p>') },
+diff --git a/test/res.location.js b/test/res.location.js
+index 158afac01e7..c80b38de6b8 100644
+--- a/test/res.location.js
++++ b/test/res.location.js
+@@ -1,7 +1,9 @@
+ 'use strict'
+ 
+ var express = require('../')
+-  , request = require('supertest');
++  , request = require('supertest')
++  , assert = require('assert')
++  , url = require('url');
+ 
+ describe('res', function(){
+   describe('.location(url)', function(){
+@@ -9,38 +11,38 @@ describe('res', function(){
+       var app = express();
+ 
+       app.use(function(req, res){
+-        res.location('http://google.com').end();
++        res.location('http://google.com/').end();
+       });
+ 
+       request(app)
+       .get('/')
+-      .expect('Location', 'http://google.com')
++      .expect('Location', 'http://google.com/')
+       .expect(200, done)
+     })
+ 
+-    it('should encode "url"', function (done) {
+-      var app = express()
++    it('should preserve trailing slashes when not present', function(done){
++      var app = express();
+ 
+-      app.use(function (req, res) {
+-        res.location('https://google.com?q=\u2603 §10').end()
+-      })
++      app.use(function(req, res){
++        res.location('http://google.com').end();
++      });
+ 
+       request(app)
+       .get('/')
+-      .expect('Location', 'https://google.com?q=%E2%98%83%20%C2%A710')
++      .expect('Location', 'http://google.com')
+       .expect(200, done)
+     })
+ 
+-    it('should not touch already-encoded sequences in "url"', function (done) {
++    it('should encode "url"', function (done) {
+       var app = express()
+ 
+       app.use(function (req, res) {
+-        res.location('https://google.com?q=%A710').end()
++        res.location('https://google.com?q=\u2603 §10').end()
+       })
+ 
+       request(app)
+       .get('/')
+-      .expect('Location', 'https://google.com?q=%A710')
++      .expect('Location', 'https://google.com?q=%E2%98%83%20%C2%A710')
+       .expect(200, done)
+     })
+ 
+@@ -101,5 +103,283 @@ describe('res', function(){
+         .expect(200, done)
+       })
+     })
++
++    it('should encode data uri', function (done) {
++      var app = express()
++      app.use(function (req, res) {
++        res.location('data:text/javascript,export default () => { }').end();
++      });
++
++      request(app)
++        .get('/')
++        .expect('Location', 'data:text/javascript,export%20default%20()%20=%3E%20%7B%20%7D')
++        .expect(200, done)
++    })
++
++    it('should encode data uri', function (done) {
++      var app = express()
++      app.use(function (req, res) {
++        res.location('data:text/javascript,export default () => { }').end();
++      });
++
++      request(app)
++        .get('/')
++        .expect('Location', 'data:text/javascript,export%20default%20()%20=%3E%20%7B%20%7D')
++        .expect(200, done)
++    })
++
++    it('should consistently handle non-string input: boolean', function (done) {
++      var app = express()
++      app.use(function (req, res) {
++        res.location(true).end();
++      });
++
++      request(app)
++        .get('/')
++        .expect('Location', 'true')
++        .expect(200, done)
++    });
++
++    it('should consistently handle non-string inputs: object', function (done) {
++      var app = express()
++      app.use(function (req, res) {
++        res.location({}).end();
++      });
++
++      request(app)
++        .get('/')
++        .expect('Location', '[object%20Object]')
++        .expect(200, done)
++    });
++
++    it('should consistently handle non-string inputs: array', function (done) {
++      var app = express()
++      app.use(function (req, res) {
++        res.location([]).end();
++      });
++
++      request(app)
++        .get('/')
++        .expect('Location', '')
++        .expect(200, done)
++    });
++
++    it('should consistently handle empty string input', function (done) {
++      var app = express()
++      app.use(function (req, res) {
++        res.location('').end();
++      });
++
++      request(app)
++        .get('/')
++        .expect('Location', '')
++        .expect(200, done)
++    });
++
++
++    if (typeof URL !== 'undefined') {
++      it('should accept an instance of URL', function (done) {
++        var app = express();
++
++        app.use(function(req, res){
++          res.location(new URL('http://google.com/')).end();
++        });
++
++        request(app)
++          .get('/')
++          .expect('Location', 'http://google.com/')
++          .expect(200, done);
++      });
++    }
+   })
++
++  describe('location header encoding', function() {
++    function createRedirectServerForDomain (domain) {
++      var app = express();
++      app.use(function (req, res) {
++        var host = url.parse(req.query.q, false, true).host;
++        // This is here to show a basic check one might do which
++        // would pass but then the location header would still be bad
++        if (host !== domain) {
++          res.status(400).end('Bad host: ' + host + ' !== ' + domain);
++        }
++        res.location(req.query.q).end();
++      });
++      return app;
++    }
++
++    function testRequestedRedirect (app, inputUrl, expected, expectedHost, done) {
++      return request(app)
++        // Encode uri because old supertest does not and is required
++        // to test older node versions. New supertest doesn't re-encode
++        // so this works in both.
++        .get('/?q=' + encodeURIComponent(inputUrl))
++        .expect('') // No body.
++        .expect(200)
++        .expect('Location', expected)
++        .end(function (err, res) {
++          if (err) {
++            console.log('headers:', res.headers)
++            console.error('error', res.error, err);
++            return done(err, res);
++          }
++
++          // Parse the hosts from the input URL and the Location header
++          var inputHost = url.parse(inputUrl, false, true).host;
++          var locationHost = url.parse(res.headers['location'], false, true).host;
++
++          assert.strictEqual(locationHost, expectedHost);
++
++          // Assert that the hosts are the same
++          if (inputHost !== locationHost) {
++            return done(new Error('Hosts do not match: ' + inputHost + " !== " +  locationHost));
++          }
++
++          return done(null, res);
++        });
++    }
++
++    it('should not touch already-encoded sequences in "url"', function (done) {
++      var app = createRedirectServerForDomain('google.com');
++      testRequestedRedirect(
++        app,
++        'https://google.com?q=%A710',
++        'https://google.com?q=%A710',
++        'google.com',
++        done
++      );
++    });
++
++    it('should consistently handle relative urls', function (done) {
++      var app = createRedirectServerForDomain(null);
++      testRequestedRedirect(
++        app,
++        '/foo/bar',
++        '/foo/bar',
++        null,
++        done
++      );
++    });
++
++    it('should not encode urls in such a way that they can bypass redirect allow lists', function (done) {
++      var app = createRedirectServerForDomain('google.com');
++      testRequestedRedirect(
++        app,
++        'http://google.com\\@apple.com',
++        'http://google.com\\@apple.com',
++        'google.com',
++        done
++      );
++    });
++
++    it('should not be case sensitive', function (done) {
++      var app = createRedirectServerForDomain('google.com');
++      testRequestedRedirect(
++        app,
++        'HTTP://google.com\\@apple.com',
++        'HTTP://google.com\\@apple.com',
++        'google.com',
++        done
++      );
++    });
++
++    it('should work with https', function (done) {
++      var app = createRedirectServerForDomain('google.com');
++      testRequestedRedirect(
++        app,
++        'https://google.com\\@apple.com',
++        'https://google.com\\@apple.com',
++        'google.com',
++        done
++      );
++    });
++
++    it('should correctly encode schemaless paths', function (done) {
++      var app = createRedirectServerForDomain('google.com');
++      testRequestedRedirect(
++        app,
++        '//google.com\\@apple.com/',
++        '//google.com\\@apple.com/',
++        'google.com',
++        done
++      );
++    });
++
++    it('should percent encode backslashes in the path', function (done) {
++      var app = createRedirectServerForDomain('google.com');
++      testRequestedRedirect(
++        app,
++        'https://google.com/foo\\bar\\baz',
++        'https://google.com/foo%5Cbar%5Cbaz',
++        'google.com',
++        done
++      );
++    });
++
++    it('should encode backslashes in the path after the first backslash that triggered path parsing', function (done) {
++      var app = createRedirectServerForDomain('google.com');
++      testRequestedRedirect(
++        app,
++        'https://google.com\\@app\\l\\e.com',
++        'https://google.com\\@app%5Cl%5Ce.com',
++        'google.com',
++        done
++      );
++    });
++
++    it('should escape header splitting for old node versions', function (done) {
++      var app = createRedirectServerForDomain('google.com');
++      testRequestedRedirect(
++        app,
++        'http://google.com\\@apple.com/%0d%0afoo:%20bar',
++        'http://google.com\\@apple.com/%0d%0afoo:%20bar',
++        'google.com',
++        done
++      );
++    });
++
++    it('should encode unicode correctly', function (done) {
++      var app = createRedirectServerForDomain(null);
++      testRequestedRedirect(
++        app,
++        '/%e2%98%83',
++        '/%e2%98%83',
++        null,
++        done
++      );
++    });
++
++    it('should encode unicode correctly even with a bad host', function (done) {
++      var app = createRedirectServerForDomain('google.com');
++      testRequestedRedirect(
++        app,
++        'http://google.com\\@apple.com/%e2%98%83',
++        'http://google.com\\@apple.com/%e2%98%83',
++        'google.com',
++        done
++      );
++    });
++
++    it('should work correctly despite using deprecated url.parse', function (done) {
++      var app = createRedirectServerForDomain('google.com');
++      testRequestedRedirect(
++        app,
++        'https://google.com\'.bb.com/1.html',
++        'https://google.com\'.bb.com/1.html',
++        'google.com',
++        done
++      );
++    });
++
++    it('should encode file uri path', function (done) {
++      var app = createRedirectServerForDomain('');
++      testRequestedRedirect(
++        app,
++        'file:///etc\\passwd',
++        'file:///etc%5Cpasswd',
++        '',
++        done
++      );
++    });
++  });
+ })
