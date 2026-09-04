@@ -1,10 +1,42 @@
-import { defineContentScript } from '#imports';
+import '../assets/sidebar.css';
+import { browser, createShadowRootUi, defineContentScript } from '#imports';
+import { createController } from '../lib/controller';
+import { HOST_TAG } from '../lib/page';
+import { prefs } from '../lib/prefs';
+import { createSidebar, type Sidebar } from '../lib/render';
 
 export default defineContentScript({
   matches: ['https://github.com/*/*/compare/*'],
   runAt: 'document_idle',
   cssInjectionMode: 'ui',
-  main() {
-    console.debug('[compare-tree] content script loaded');
+  async main(ctx) {
+    const controller = createController({
+      fetch: (url, init) => fetch(url, init),
+      prefs,
+      version: browser.runtime.getManifest().version,
+      mount: async (anchor) => {
+        const created: { sidebar?: Sidebar } = {};
+        const ui = await createShadowRootUi(ctx, {
+          name: HOST_TAG,
+          position: 'inline',
+          anchor,
+          append: 'before',
+          onMount: (container) => {
+            created.sidebar = createSidebar(container);
+            return created.sidebar;
+          },
+        });
+        ui.mount();
+        const sidebar = created.sidebar;
+        if (!sidebar) throw new Error('The sidebar did not mount');
+        return { sidebar, unmount: () => ui.remove() };
+      },
+    });
+
+    ctx.onInvalidated(() => controller.dispose());
+    ctx.addEventListener(window, 'wxt:locationchange', ({ newUrl }) => {
+      void controller.sync(newUrl.href);
+    });
+    await controller.sync(location.href);
   },
 });
