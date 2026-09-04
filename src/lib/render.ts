@@ -1,5 +1,5 @@
 import { ICONS } from './icons';
-import type { DirNode, FileNode, SidebarState, TreeNode } from './types';
+import type { DirNode, FileNode, FileStatus, SidebarState, TreeNode } from './types';
 
 export interface Sidebar {
   /** Show the full panel (true) or only the slim "Show file tree" bar (false). */
@@ -17,6 +17,14 @@ export interface Sidebar {
 
 const MINUS = '−';
 const ARROW = '→';
+
+const STATUS_CLASS: Record<FileStatus, string> = {
+  added: 'ctg-icon-added',
+  modified: 'ctg-icon-modified',
+  removed: 'ctg-icon-removed',
+  renamed: 'ctg-icon-renamed',
+  copied: 'ctg-icon-copied',
+};
 
 export function createSidebar(container: HTMLElement): Sidebar {
   const doc = container.ownerDocument;
@@ -148,9 +156,10 @@ export function createSidebar(container: HTMLElement): Sidebar {
             ? ICONS.renamed
             : ICONS.modified;
     row.innerHTML =
-      `<span class="ctg-icon ctg-icon-${change.status}">${icon}</span>` +
+      `<span class="ctg-icon">${icon}</span>` +
       `<span class="ctg-name"></span>` +
       `<span class="ctg-meta"></span>`;
+    row.querySelector('.ctg-icon')?.classList.add(STATUS_CLASS[change.status]);
     setText(row, '.ctg-name', file.name);
     const meta = row.querySelector('.ctg-meta');
     if (meta) {
