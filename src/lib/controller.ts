@@ -92,7 +92,9 @@ export function createController(deps: ControllerDeps): Controller {
         const accessProblem = response.status === 404 || type.includes('text/html');
         sidebar.setState({
           kind: 'error',
-          message: accessProblem ? ACCESS_MESSAGE : `GitHub returned ${response.status} for the diff.`,
+          message: accessProblem
+            ? ACCESS_MESSAGE
+            : `GitHub returned ${response.status} for the diff.`,
         });
         return;
       }

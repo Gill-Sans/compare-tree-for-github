@@ -3,3 +3,4 @@
 pnpm-lock.yaml
 tests/fixtures
 docs/superpowers
+.superpowers

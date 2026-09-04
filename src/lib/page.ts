@@ -183,7 +183,10 @@ export function measureStickyTop(doc: Document = document, win: Window = window)
   let top = DEFAULT_STICKY_TOP;
   doc.querySelectorAll<HTMLElement>('header, .js-sticky, [class*="sticky"]').forEach((el) => {
     const style = win.getComputedStyle(el);
-    if ((style.position === 'sticky' || style.position === 'fixed') && parseFloat(style.top) === 0) {
+    if (
+      (style.position === 'sticky' || style.position === 'fixed') &&
+      parseFloat(style.top) === 0
+    ) {
       top = Math.max(top, el.getBoundingClientRect().height + DEFAULT_STICKY_TOP);
     }
   });

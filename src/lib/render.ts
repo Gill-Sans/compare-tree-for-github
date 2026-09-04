@@ -72,7 +72,9 @@ export function createSidebar(container: HTMLElement): Sidebar {
   query('.ctg-expand-all').addEventListener('click', () => setAllExpanded(true));
 
   function setAllExpanded(expanded: boolean): void {
-    tree.querySelectorAll('.ctg-dir').forEach((li) => li.setAttribute('aria-expanded', String(expanded)));
+    tree
+      .querySelectorAll('.ctg-dir')
+      .forEach((li) => li.setAttribute('aria-expanded', String(expanded)));
   }
 
   tree.addEventListener('click', (event) => {

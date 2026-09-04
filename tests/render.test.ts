@@ -54,7 +54,16 @@ describe('createSidebar rendering', () => {
 
   it('orders directories before files and indents by depth', () => {
     const labels = rows().map((r) => r.querySelector('.ctg-name')?.textContent);
-    expect(labels).toEqual(['docs', 'new.md', 'src', 'app', 'main.ts', 'util.ts', 'old.ts', 'logo.png']);
+    expect(labels).toEqual([
+      'docs',
+      'new.md',
+      'src',
+      'app',
+      'main.ts',
+      'util.ts',
+      'old.ts',
+      'logo.png',
+    ]);
     expect(rowFor('src').style.getPropertyValue('--ctg-depth')).toBe('0');
     expect(rowFor('src/app/main.ts').style.getPropertyValue('--ctg-depth')).toBe('2');
   });
@@ -91,7 +100,9 @@ describe('createSidebar interactions', () => {
 
   it('collapses and expands everything from the header buttons', () => {
     const expandedStates = () =>
-      Array.from(container.querySelectorAll('.ctg-dir')).map((d) => d.getAttribute('aria-expanded'));
+      Array.from(container.querySelectorAll('.ctg-dir')).map((d) =>
+        d.getAttribute('aria-expanded'),
+      );
     container.querySelector<HTMLButtonElement>('.ctg-collapse-all')!.click();
     expect(expandedStates()).toEqual(['false', 'false', 'false']);
     container.querySelector<HTMLButtonElement>('.ctg-expand-all')!.click();

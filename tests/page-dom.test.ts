@@ -49,7 +49,9 @@ describe('findDiffRoot and readTabFileCount', () => {
 describe('waitFor', () => {
   it('resolves immediately when the element exists', async () => {
     installComparePage(document);
-    await expect(waitFor('#files', { doc: document })).resolves.toBe(document.getElementById('files'));
+    await expect(waitFor('#files', { doc: document })).resolves.toBe(
+      document.getElementById('files'),
+    );
   });
 
   it('resolves when the element appears later', async () => {
@@ -64,7 +66,11 @@ describe('waitFor', () => {
   it('rejects on timeout and on abort', async () => {
     await expect(waitFor('#never', { doc: document, timeoutMs: 20 })).rejects.toThrow(/Timed out/);
     const controller = new AbortController();
-    const pending = waitFor('#never', { doc: document, timeoutMs: 1000, signal: controller.signal });
+    const pending = waitFor('#never', {
+      doc: document,
+      timeoutMs: 1000,
+      signal: controller.signal,
+    });
     controller.abort();
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
   });
@@ -147,7 +153,11 @@ describe('observeActiveFile', () => {
     }
   }
   const entry = (target: Element, top: number, isIntersecting = true) =>
-    ({ target, isIntersecting, boundingClientRect: { top } }) as unknown as IntersectionObserverEntry;
+    ({
+      target,
+      isIntersecting,
+      boundingClientRect: { top },
+    }) as unknown as IntersectionObserverEntry;
 
   it('reports the topmost header in the zone and keeps the last one when the zone empties', () => {
     const { files, container } = installComparePage(document, { paths: ['a.ts', 'b.ts'] });

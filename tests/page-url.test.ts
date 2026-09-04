@@ -15,16 +15,16 @@ describe('parseCompareUrl', () => {
   });
 
   it('parses tags with dots and two-dot ranges', () => {
-    expect(parseCompareUrl('https://github.com/expressjs/express/compare/4.18.2...4.19.2')?.range).toBe(
-      '4.18.2...4.19.2',
-    );
+    expect(
+      parseCompareUrl('https://github.com/expressjs/express/compare/4.18.2...4.19.2')?.range,
+    ).toBe('4.18.2...4.19.2');
     expect(parseCompareUrl('https://github.com/o/r/compare/a..b')?.range).toBe('a..b');
   });
 
   it('keeps fork prefixes and encoded characters untouched', () => {
-    expect(parseCompareUrl('https://github.com/o/r/compare/main...someone:fork:feature%2Fx')?.range).toBe(
-      'main...someone:fork:feature%2Fx',
-    );
+    expect(
+      parseCompareUrl('https://github.com/o/r/compare/main...someone:fork:feature%2Fx')?.range,
+    ).toBe('main...someone:fork:feature%2Fx');
   });
 
   it('strips trailing slashes', () => {

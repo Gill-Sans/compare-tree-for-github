@@ -14,6 +14,8 @@ describe('prefs', () => {
   it('persists the sidebar state in local extension storage', async () => {
     await prefs.setSidebarOpen(false);
     await expect(prefs.getSidebarOpen()).resolves.toBe(false);
-    await expect(fakeBrowser.storage.local.get('sidebarOpen')).resolves.toEqual({ sidebarOpen: false });
+    await expect(fakeBrowser.storage.local.get('sidebarOpen')).resolves.toEqual({
+      sidebarOpen: false,
+    });
   });
 });

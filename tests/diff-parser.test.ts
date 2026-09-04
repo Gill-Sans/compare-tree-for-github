@@ -54,8 +54,16 @@ describe('createDiffParser on the edge-case fixture', () => {
   });
 
   it('does not mistake content lines starting with --- or +++ for headers', () => {
-    expect(byPath(summary, 'README.md')).toMatchObject({ status: 'added', additions: 2, deletions: 0 });
-    expect(byPath(summary, 'old.txt')).toMatchObject({ status: 'removed', additions: 0, deletions: 2 });
+    expect(byPath(summary, 'README.md')).toMatchObject({
+      status: 'added',
+      additions: 2,
+      deletions: 0,
+    });
+    expect(byPath(summary, 'old.txt')).toMatchObject({
+      status: 'removed',
+      additions: 0,
+      deletions: 2,
+    });
   });
 
   it('handles renames with and without content changes', () => {
@@ -74,7 +82,11 @@ describe('createDiffParser on the edge-case fixture', () => {
   });
 
   it('flags binaries and skips binary patch payloads', () => {
-    expect(byPath(summary, 'img/logo.png')).toMatchObject({ status: 'added', binary: true, additions: 0 });
+    expect(byPath(summary, 'img/logo.png')).toMatchObject({
+      status: 'added',
+      binary: true,
+      additions: 0,
+    });
     expect(byPath(summary, 'img/icon.png')).toMatchObject({
       status: 'modified',
       binary: true,
@@ -84,8 +96,16 @@ describe('createDiffParser on the edge-case fixture', () => {
   });
 
   it('reports mode-only changes and empty files with zero counts', () => {
-    expect(byPath(summary, 'bin/run.sh')).toMatchObject({ status: 'modified', additions: 0, deletions: 0 });
-    expect(byPath(summary, 'empty.txt')).toMatchObject({ status: 'added', additions: 0, deletions: 0 });
+    expect(byPath(summary, 'bin/run.sh')).toMatchObject({
+      status: 'modified',
+      additions: 0,
+      deletions: 0,
+    });
+    expect(byPath(summary, 'empty.txt')).toMatchObject({
+      status: 'added',
+      additions: 0,
+      deletions: 0,
+    });
   });
 
   it('counts submodule pointer changes as one and one', () => {
@@ -97,7 +117,10 @@ describe('createDiffParser on the edge-case fixture', () => {
   });
 
   it('records copies', () => {
-    expect(byPath(summary, 'copy-dst.txt')).toMatchObject({ status: 'copied', oldPath: 'copy-src.txt' });
+    expect(byPath(summary, 'copy-dst.txt')).toMatchObject({
+      status: 'copied',
+      oldPath: 'copy-src.txt',
+    });
   });
 
   it('splits unquoted headers whose path contains " b/"', () => {
@@ -162,7 +185,10 @@ describe('splitHeaderPaths', () => {
   });
 
   it('splits an unquoted rename', () => {
-    expect(splitHeaderPaths('a/old.txt b/new name.txt')).toEqual({ a: 'old.txt', b: 'new name.txt' });
+    expect(splitHeaderPaths('a/old.txt b/new name.txt')).toEqual({
+      a: 'old.txt',
+      b: 'new name.txt',
+    });
   });
 
   it('splits quoted and mixed forms', () => {
