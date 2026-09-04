@@ -221,6 +221,7 @@ export function readQuoted(s: string, start: number): { value: string; end: numb
       flush();
       let j = i + 1;
       let octal = '';
+      // charAt keeps these relational compares typed as string under noUncheckedIndexedAccess.
       while (j < s.length && octal.length < 3 && s.charAt(j) >= '0' && s.charAt(j) <= '7') {
         octal += s.charAt(j);
         j += 1;

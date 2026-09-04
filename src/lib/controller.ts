@@ -235,7 +235,11 @@ export function createController(deps: ControllerDeps): Controller {
       }
     },
     dispose() {
-      teardown();
+      try {
+        teardown();
+      } catch (error) {
+        log('Failed to tear down the compare tree', error);
+      }
     },
   };
 }

@@ -175,7 +175,8 @@ describe('controller happy path', () => {
     window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
     controller = makeController();
     await controller.sync(URL_A);
-    // The diff for this path never streams in, so the jump resolves false after the timeout.
+    // The diff for this path never streams in, so the jump must still be pending after 50 ms;
+    // the eventual false after the 20 s wait is covered by the scrollToFile timeout test in page-dom.test.ts.
     await expect(
       Promise.race([
         spies[0]!.select!('never/streamed.ts'),

@@ -49,12 +49,18 @@ export function compareKey(parts: CompareParts): string {
   return `${parts.owner}/${parts.repo}/${parts.range}`;
 }
 
+const anchorCache = new Map<string, string>();
+
 /** GitHub's diff anchor: "diff-" plus the hex SHA-256 of the UTF-8 path (the new path for renames). */
 export async function anchorFor(path: string): Promise<string> {
+  const cached = anchorCache.get(path);
+  if (cached !== undefined) return cached;
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(path));
   let hex = '';
   for (const byte of new Uint8Array(digest)) hex += byte.toString(16).padStart(2, '0');
-  return `diff-${hex}`;
+  const anchor = `diff-${hex}`;
+  anchorCache.set(path, anchor);
+  return anchor;
 }
 
 export interface DiffRoot {

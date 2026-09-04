@@ -124,9 +124,13 @@ export function createSidebar(container: HTMLElement): Sidebar {
       `<span class="ctg-name"></span>` +
       `<span class="ctg-meta"><span class="ctg-count"></span><span class="ctg-add"></span><span class="ctg-del"></span></span>`;
     setText(row, '.ctg-name', dir.name);
-    setText(row, '.ctg-count', `${dir.files} ${dir.files === 1 ? 'file' : 'files'}`);
-    setText(row, '.ctg-add', `+${dir.additions}`);
-    setText(row, '.ctg-del', `${MINUS}${dir.deletions}`);
+    setText(
+      row,
+      '.ctg-count',
+      `${dir.files.toLocaleString('en-US')} ${dir.files === 1 ? 'file' : 'files'}`,
+    );
+    setText(row, '.ctg-add', `+${dir.additions.toLocaleString('en-US')}`);
+    setText(row, '.ctg-del', `${MINUS}${dir.deletions.toLocaleString('en-US')}`);
 
     const group = doc.createElement('ul');
     group.className = 'ctg-group';
@@ -169,8 +173,8 @@ export function createSidebar(container: HTMLElement): Sidebar {
         meta.textContent = 'BIN';
       } else {
         meta.innerHTML = `<span class="ctg-add"></span><span class="ctg-del"></span>`;
-        setText(meta, '.ctg-add', `+${change.additions}`);
-        setText(meta, '.ctg-del', `${MINUS}${change.deletions}`);
+        setText(meta, '.ctg-add', `+${change.additions.toLocaleString('en-US')}`);
+        setText(meta, '.ctg-del', `${MINUS}${change.deletions.toLocaleString('en-US')}`);
       }
     }
 
