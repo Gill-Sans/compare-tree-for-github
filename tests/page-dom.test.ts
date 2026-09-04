@@ -109,7 +109,7 @@ describe('scrollToFile', () => {
     const scrollTo = vi.fn();
     window.scrollTo = scrollTo as unknown as typeof window.scrollTo;
     await expect(scrollToFile(path, { files, doc: document, win: window })).resolves.toBe(true);
-    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'auto' });
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'instant' });
     expect(window.location.hash).toBe(`#${anchor}`);
   });
 

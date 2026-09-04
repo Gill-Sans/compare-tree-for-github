@@ -222,7 +222,7 @@ export async function scrollToFile(path: string, options: ScrollOptions): Promis
   const target = await waitForId(anchor, files, doc, timeoutMs, signal);
   if (!target) return false;
   const top = target.getBoundingClientRect().top + win.scrollY - stickyTop;
-  win.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+  win.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
   win.history.replaceState(null, '', `#${anchor}`);
   return true;
 }

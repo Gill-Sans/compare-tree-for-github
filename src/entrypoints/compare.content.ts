@@ -21,6 +21,8 @@ export default defineContentScript({
           position: 'inline',
           anchor,
           append: 'before',
+          // Without this WXT injects ":host { all: initial !important }", which overrides the page-level sticky and grid rules on the host.
+          inheritStyles: true,
           onMount: (container) => {
             created.sidebar = createSidebar(container);
             return created.sidebar;
