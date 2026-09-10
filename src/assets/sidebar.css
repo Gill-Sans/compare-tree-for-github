@@ -7,8 +7,8 @@
   font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif,
     'Apple Color Emoji', 'Segoe UI Emoji';
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 20px;
   color: var(--fgColor-default, #1f2328);
   box-sizing: border-box;
 }
@@ -27,8 +27,6 @@
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - var(--ctg-sticky-top, 8px) - 8px);
-  border: 1px solid var(--borderColor-default, #d1d9e0);
-  border-radius: 6px;
   background: var(--bgColor-default, #fff);
 }
 
@@ -36,7 +34,7 @@
   flex: none;
   padding: 8px;
   background: var(--bgColor-default, #fff);
-  border-bottom: 1px solid var(--borderColor-default, #d1d9e0);
+  border-bottom: 1px solid var(--borderColor-muted, #d1d9e0b3);
 }
 
 .ctg-title-row {
@@ -47,13 +45,14 @@
 
 .ctg-title {
   margin: 0;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
 }
 
 .ctg-totals {
   margin-left: auto;
   color: var(--fgColor-muted, #59636e);
+  font-size: 12px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -99,8 +98,7 @@
 }
 
 .ctg-btn:focus-visible,
-.ctg-icon-btn:focus-visible,
-.ctg-row:focus-visible {
+.ctg-icon-btn:focus-visible {
   outline: 2px solid var(--fgColor-accent, #0969da);
   outline-offset: -2px;
 }
@@ -158,44 +156,67 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 4px 0;
+  padding: 8px 0;
 }
 
 .ctg-dir[aria-expanded='false'] > .ctg-group {
   display: none;
 }
 
-.ctg-dir[aria-expanded='false'] > .ctg-row .ctg-chevron svg {
-  transform: rotate(-90deg);
-}
-
 .ctg-row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
-  width: 100%;
-  height: 26px;
-  padding: 0 8px 0 calc(8px + var(--ctg-depth, 0) * 16px);
+  gap: 8px;
+  width: calc(100% - 16px);
+  height: 32px;
+  margin: 0 8px;
+  padding: 0 8px 0 calc(var(--ctg-depth, 0) * 8px);
   border: 0;
-  background: transparent;
+  border-radius: 6px;
+  background-color: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
+  /* Thin vertical guide lines under each ancestor's chevron column. */
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0 7px,
+    var(--borderColor-muted, #d1d9e0b3) 7px 8px
+  );
+  background-size: calc(var(--ctg-depth, 0) * 8px) 100%;
+  background-repeat: no-repeat;
+}
+
+/* File rows have no chevron column of their own; align their icon with folder icons (16px
+   chevron column + 8px gap) instead. */
+.ctg-file > .ctg-row {
+  padding-left: calc(var(--ctg-depth, 0) * 8px + 24px);
 }
 
 .ctg-row:hover {
-  background: var(--bgColor-muted, #f6f8fa);
+  background-color: var(--control-transparent-bgColor-hover, #818b981a);
 }
 
 .ctg-row.ctg-active {
-  background: var(--bgColor-muted, #f6f8fa);
-  box-shadow: inset 2px 0 0 var(--fgColor-accent, #0969da);
-  font-weight: 600;
+  background-color: var(--control-transparent-bgColor-selected, #818b9826);
 }
 
-.ctg-chevron svg {
-  transition: transform 80ms ease-out;
+.ctg-row.ctg-active::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: calc(50% - 12px);
+  width: 4px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--fgColor-accent, #0969da);
+}
+
+.ctg-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--fgColor-accent, #0969da);
 }
 
 .ctg-name {
@@ -211,30 +232,77 @@
   gap: 6px;
   margin-left: auto;
   color: var(--fgColor-muted, #59636e);
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
-.ctg-icon-dir {
+.ctg-glyph {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  background-color: currentColor;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: 16px 16px;
+  mask-size: 16px 16px;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+.ctg-toggle {
   color: var(--fgColor-muted, #59636e);
+  -webkit-mask-image: var(--ctg-glyph-chevron);
+  mask-image: var(--ctg-glyph-chevron);
+  -webkit-mask-size: 12px 12px;
+  mask-size: 12px 12px;
+}
+
+.ctg-dir[aria-expanded='false'] > .ctg-row > .ctg-toggle {
+  transform: rotate(-90deg);
+}
+
+.ctg-icon-dir {
+  color: var(--treeViewItem-leadingVisual-iconColor-rest, #54aeff);
+  -webkit-mask-image: var(--ctg-glyph-folder-open);
+  mask-image: var(--ctg-glyph-folder-open);
+}
+
+.ctg-dir[aria-expanded='false'] > .ctg-row > .ctg-icon-dir {
+  -webkit-mask-image: var(--ctg-glyph-folder);
+  mask-image: var(--ctg-glyph-folder);
 }
 
 .ctg-icon-added {
   color: var(--fgColor-success, #1a7f37);
+  -webkit-mask-image: var(--ctg-glyph-file-added);
+  mask-image: var(--ctg-glyph-file-added);
 }
 
 .ctg-icon-removed {
   color: var(--fgColor-danger, #d1242f);
+  -webkit-mask-image: var(--ctg-glyph-file-removed);
+  mask-image: var(--ctg-glyph-file-removed);
 }
 
 .ctg-icon-modified {
-  color: var(--fgColor-attention, #9a6700);
+  color: var(--fgColor-muted, #59636e);
+  -webkit-mask-image: var(--ctg-glyph-file-diff);
+  mask-image: var(--ctg-glyph-file-diff);
 }
 
 .ctg-icon-renamed,
 .ctg-icon-copied {
   color: var(--fgColor-muted, #59636e);
+  -webkit-mask-image: var(--ctg-glyph-file-moved);
+  mask-image: var(--ctg-glyph-file-moved);
+}
+
+@media (forced-colors: active) {
+  .ctg-glyph {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
 }
 
 .ctg-row.ctg-busy .ctg-meta {
@@ -253,10 +321,6 @@
   animation: ctg-spin 0.8s linear infinite;
 }
 
-.ctg-row {
-  position: relative;
-}
-
 .ctg-bar {
   padding: 4px 0 8px;
 }
@@ -271,6 +335,17 @@
   touch-action: none;
   user-select: none;
   z-index: 1;
+}
+
+/* The resting 1px divider between the tree and the diff. */
+.ctg-resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(50% - 0.5px);
+  width: 1px;
+  background: var(--borderColor-default, #d1d9e0);
 }
 
 .ctg-resizer::after {

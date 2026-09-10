@@ -1,4 +1,4 @@
-import { ICONS } from './icons';
+import { glyphUrl, ICONS, type GlyphName } from './icons';
 import type { DirNode, FileNode, FileStatus, SidebarState, TreeNode } from './types';
 
 export interface Sidebar {
@@ -31,9 +31,35 @@ const STATUS_CLASS: Record<FileStatus, string> = {
   copied: 'ctg-icon-copied',
 };
 
+// Rows hold no <svg> of their own; each glyph is a CSS mask image referencing one of these
+// custom properties, set once on the container so every row can share the same data: URIs.
+const GLYPH_VARS: Record<string, GlyphName> = {
+  '--ctg-glyph-chevron': 'chevron',
+  '--ctg-glyph-folder': 'folder',
+  '--ctg-glyph-folder-open': 'folderOpen',
+  '--ctg-glyph-file-added': 'fileAdded',
+  '--ctg-glyph-file-removed': 'fileRemoved',
+  '--ctg-glyph-file-diff': 'fileDiff',
+  '--ctg-glyph-file-moved': 'fileMoved',
+};
+
+const DIR_ROW_HTML =
+  '<span class="ctg-glyph ctg-toggle"></span>' +
+  '<span class="ctg-glyph ctg-icon ctg-icon-dir"></span>' +
+  '<span class="ctg-name"></span>' +
+  '<span class="ctg-meta"><span class="ctg-count"></span><span class="ctg-add"></span><span class="ctg-del"></span></span>';
+
+const FILE_ROW_HTML =
+  '<span class="ctg-glyph ctg-icon"></span>' +
+  '<span class="ctg-name"></span>' +
+  '<span class="ctg-meta"></span>';
+
 export function createSidebar(container: HTMLElement): Sidebar {
   const doc = container.ownerDocument;
   container.classList.add('ctg-root');
+  for (const [prop, name] of Object.entries(GLYPH_VARS)) {
+    container.style.setProperty(prop, glyphUrl(name));
+  }
   container.innerHTML = `
     <div class="ctg-bar">
       <button type="button" class="ctg-btn ctg-show" title="Show file tree">${ICONS.sidebarExpand}<span>Show file tree</span></button>
@@ -172,8 +198,9 @@ export function createSidebar(container: HTMLElement): Sidebar {
       try {
         resizer.setPointerCapture(event.pointerId);
       } catch {
-        // Pointer capture is unavailable in some test/embedding environments; dragging still
-        // works off document-level pointermove/pointerup.
+        // Pointer capture is unavailable in some test/embedding environments. There are no
+        // document-level listeners, so without it the drag only tracks while the pointer stays
+        // over the divider.
       }
     }
   });
@@ -244,11 +271,7 @@ export function createSidebar(container: HTMLElement): Sidebar {
     row.className = 'ctg-row';
     row.style.setProperty('--ctg-depth', String(depth));
     row.title = dir.path;
-    row.innerHTML =
-      `<span class="ctg-chevron">${ICONS.chevronDown}</span>` +
-      `<span class="ctg-icon ctg-icon-dir">${ICONS.folder}</span>` +
-      `<span class="ctg-name"></span>` +
-      `<span class="ctg-meta"><span class="ctg-count"></span><span class="ctg-add"></span><span class="ctg-del"></span></span>`;
+    row.innerHTML = DIR_ROW_HTML;
     setText(row, '.ctg-name', dir.name);
     setText(
       row,
@@ -279,18 +302,7 @@ export function createSidebar(container: HTMLElement): Sidebar {
     row.className = 'ctg-row';
     row.style.setProperty('--ctg-depth', String(depth));
     row.title = change.oldPath ? `${change.oldPath} ${ARROW} ${change.path}` : change.path;
-    const icon =
-      change.status === 'added'
-        ? ICONS.added
-        : change.status === 'removed'
-          ? ICONS.removed
-          : change.status === 'renamed' || change.status === 'copied'
-            ? ICONS.renamed
-            : ICONS.modified;
-    row.innerHTML =
-      `<span class="ctg-icon">${icon}</span>` +
-      `<span class="ctg-name"></span>` +
-      `<span class="ctg-meta"></span>`;
+    row.innerHTML = FILE_ROW_HTML;
     row.querySelector('.ctg-icon')?.classList.add(STATUS_CLASS[change.status]);
     setText(row, '.ctg-name', file.name);
     const meta = row.querySelector('.ctg-meta');

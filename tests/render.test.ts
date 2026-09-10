@@ -73,10 +73,34 @@ describe('createSidebar rendering', () => {
   });
 
   it('uses a status icon per change kind', () => {
-    expect(rowFor('src/app/util.ts').querySelector('.ctg-icon-added')).not.toBeNull();
-    expect(rowFor('src/old.ts').querySelector('.ctg-icon-removed')).not.toBeNull();
-    expect(rowFor('docs/new.md').querySelector('.ctg-icon-renamed')).not.toBeNull();
-    expect(rowFor('src/app/main.ts').querySelector('.ctg-icon-modified')).not.toBeNull();
+    expect(rowFor('src/app/util.ts').querySelector('.ctg-icon.ctg-icon-added')).not.toBeNull();
+    expect(rowFor('src/old.ts').querySelector('.ctg-icon.ctg-icon-removed')).not.toBeNull();
+    expect(rowFor('docs/new.md').querySelector('.ctg-icon.ctg-icon-renamed')).not.toBeNull();
+    expect(rowFor('src/app/main.ts').querySelector('.ctg-icon.ctg-icon-modified')).not.toBeNull();
+  });
+
+  it('renders no <svg> in the tree and folder rows carry a toggle and a directory icon', () => {
+    expect(container.querySelector('.ctg-tree svg')).toBeNull();
+    expect(rowFor('src').querySelector('.ctg-toggle')).not.toBeNull();
+    expect(rowFor('src').querySelector('.ctg-icon-dir')).not.toBeNull();
+    expect(rowFor('docs').querySelector('.ctg-toggle')).not.toBeNull();
+    expect(rowFor('docs').querySelector('.ctg-icon-dir')).not.toBeNull();
+  });
+
+  it('defines every tree glyph as a data: URL custom property on the container', () => {
+    const props = [
+      '--ctg-glyph-chevron',
+      '--ctg-glyph-folder',
+      '--ctg-glyph-folder-open',
+      '--ctg-glyph-file-added',
+      '--ctg-glyph-file-removed',
+      '--ctg-glyph-file-diff',
+      '--ctg-glyph-file-moved',
+    ];
+    for (const prop of props) {
+      const value = container.style.getPropertyValue(prop);
+      expect(value).toMatch(/^url\("data:image\/svg\+xml,/);
+    }
   });
 
   it('re-renders cleanly when a new tree arrives', () => {
@@ -265,6 +289,21 @@ describe('createSidebar resizer', () => {
     await vi.waitFor(() => expect(onResize).toHaveBeenCalledWith(360, false));
 
     el.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true }));
+    expect(onResize).toHaveBeenLastCalledWith(360, true);
+    expect(container.hasAttribute('data-resizing')).toBe(false);
+  });
+
+  it('commits the last requested width when pointer capture is lost', async () => {
+    const onResize = vi.fn();
+    sidebar.onResize(onResize);
+    sidebar.setWidth(320, { min: 240, max: 800, reset: 320 });
+    const el = resizer();
+
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 100 }));
+    el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 140 }));
+    await vi.waitFor(() => expect(onResize).toHaveBeenCalledWith(360, false));
+
+    el.dispatchEvent(new PointerEvent('lostpointercapture', { bubbles: true }));
     expect(onResize).toHaveBeenLastCalledWith(360, true);
     expect(container.hasAttribute('data-resizing')).toBe(false);
   });
