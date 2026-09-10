@@ -6,7 +6,10 @@ import { prefs } from '../lib/prefs';
 import { createSidebar, type Sidebar } from '../lib/render';
 
 export default defineContentScript({
-  matches: ['https://github.com/*/*/compare/*'],
+  // Chrome injects content scripts only on full page loads, but GitHub reaches compare ranges through
+  // in-app navigation (for example from the bare /compare branch picker). Run on all of github.com and
+  // let the controller stay idle until the URL is a compare range.
+  matches: ['https://github.com/*'],
   runAt: 'document_idle',
   cssInjectionMode: 'ui',
   async main(ctx) {

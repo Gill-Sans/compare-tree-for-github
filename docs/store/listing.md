@@ -32,7 +32,7 @@ Show a navigable tree of the files changed on a GitHub branch compare page.
 ## Permission justification
 
 - storage: remembers whether the user hid the sidebar.
-- Content script on https://github.com/*/*/compare/*: needed to read the compare page and inject the tree.
+- Content script on https://github.com/*: GitHub switches pages without a full reload and Chrome injects content scripts only on page loads, so the script runs on github.com to notice navigation to a branch compare page. It stays idle elsewhere; on a compare page it reads that page and downloads its .diff to build the tree.
 
 ## Data usage disclosure
 

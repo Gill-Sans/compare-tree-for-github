@@ -21,7 +21,9 @@ counts and click-to-jump to each diff. See what a branch touches without opening
 The extension downloads the compare's `.diff` from github.com (the same request your browser
 would make if you opened the compare URL with `.diff` appended), parses it, and renders the tree
 beside GitHub's diff list. It needs only the `storage` permission, to remember whether you hid the
-sidebar. It makes no other network requests and collects no data.
+sidebar. It makes no other network requests and collects no data. The script loads on every
+github.com page because GitHub changes pages without a full reload, and stays idle until the URL
+is a compare range.
 
 ## Install
 
