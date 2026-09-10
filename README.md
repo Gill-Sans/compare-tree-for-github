@@ -8,11 +8,15 @@ counts and click-to-jump to each diff. See what a branch touches without opening
 
 ## Features
 
-- Folder tree of every changed file, one level per directory, like the PR "Files changed" sidebar.
+- Folder tree of every changed file, like the PR "Files changed" sidebar. Folders that only hold
+  one sub-folder fold into a single row (`src/main/java/com/acme`).
 - Per-file additions and deletions, status icons for added, modified, removed, and renamed files.
 - Per-folder rollups: file count, additions, deletions.
 - Click a file to jump to its diff, even before GitHub has streamed that part of the page.
 - The file under the viewport top is highlighted as you scroll.
+- Drag the divider to resize the tree (arrow keys work too, double-click resets). The width is
+  remembered.
+- Stays responsive on compares with thousands of files.
 - Follows GitHub's light, dark, and dimmed themes.
 - Works on private repositories through your existing GitHub session. No token, no setup.
 
@@ -21,7 +25,7 @@ counts and click-to-jump to each diff. See what a branch touches without opening
 The extension downloads the compare's `.diff` from github.com (the same request your browser
 would make if you opened the compare URL with `.diff` appended), parses it, and renders the tree
 beside GitHub's diff list. It needs only the `storage` permission, to remember whether you hid the
-sidebar. It makes no other network requests and collects no data. The script loads on every
+sidebar and how wide you made it. It makes no other network requests and collects no data. The script loads on every
 github.com page because GitHub changes pages without a full reload, and stays idle until the URL
 is a compare range.
 

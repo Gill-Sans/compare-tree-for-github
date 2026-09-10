@@ -1,6 +1,6 @@
 {
   "name": "compare-tree-for-github",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Adds a PR-style tree of changed folders and files to GitHub's branch compare page, with per-folder change counts.",
   "type": "module",

@@ -9,7 +9,7 @@ on any other page. On a compare page it downloads the diff of that compare from 
 the same browser session GitHub already has, and renders a file tree from it. That download is the only network
 request the extension makes. Nothing is sent anywhere else.
 
-The extension stores a single preference in Chrome's local extension storage: whether you hid
-the sidebar. It is never transmitted.
+The extension stores two preferences in Chrome's local extension storage: whether you hid the
+sidebar, and its width. They are never transmitted.
 
 Questions: open an issue in the project repository.
