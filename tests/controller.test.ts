@@ -39,9 +39,11 @@ interface Spy {
   trees: DirNode[];
   open: boolean[];
   active: Array<string | null>;
+  widths: Array<{ width: number; bounds: { min: number; max: number; reset: number } }>;
   toggle: ((open: boolean) => void) | null;
   select: ((path: string) => Promise<boolean>) | null;
   retry: (() => void) | null;
+  resize: ((width: number, commit: boolean) => void) | null;
   unmounted: boolean;
 }
 
@@ -51,9 +53,11 @@ function spySidebar(): Spy {
     trees: [],
     open: [],
     active: [],
+    widths: [],
     toggle: null,
     select: null,
     retry: null,
+    resize: null,
     unmounted: false,
   } as unknown as Spy;
   spy.sidebar = {
@@ -64,16 +68,26 @@ function spySidebar(): Spy {
     onToggleOpen: (cb) => void (spy.toggle = cb),
     onSelectFile: (cb) => void (spy.select = cb),
     onRetry: (cb) => void (spy.retry = cb),
+    setWidth: (width, bounds) => void spy.widths.push({ width, bounds }),
+    onResize: (cb) => void (spy.resize = cb),
   };
   return spy;
 }
 
-function memoryPrefs(initial = true): Prefs & { value: boolean } {
+function memoryPrefs(
+  initial = true,
+  initialWidth = 320,
+): Prefs & { value: boolean; width: number } {
   const store = {
     value: initial,
+    width: initialWidth,
     getSidebarOpen: async () => store.value,
     setSidebarOpen: async (open: boolean) => {
       store.value = open;
+    },
+    getSidebarWidth: async () => store.width,
+    setSidebarWidth: async (width: number) => {
+      store.width = width;
     },
   };
   return store;
@@ -197,6 +211,72 @@ describe('controller happy path', () => {
     spies[0]!.toggle!(false);
     await vi.waitFor(() =>
       expect(log).toHaveBeenCalledWith('Failed to save the sidebar preference', expect.any(Error)),
+    );
+  });
+});
+
+describe('controller width', () => {
+  it('applies the stored width to --ctg-sidebar-width and the sidebar without saving it', async () => {
+    const { bucket } = installComparePage(document, { tabCount: 13 });
+    const prefs = memoryPrefs(true, 400);
+    controller = makeController(prefs);
+    await controller.sync(URL_A);
+    expect(bucket.style.getPropertyValue('--ctg-sidebar-width')).toBe('400px');
+    expect(spies[0]!.widths[0]).toEqual({
+      width: 400,
+      bounds: { min: 240, max: Number.POSITIVE_INFINITY, reset: 320 },
+    });
+    // Never re-saved on load, only on a committed resize.
+    expect(prefs.width).toBe(400);
+  });
+
+  it('clamps a committed resize against the diff width and saves it', async () => {
+    const { bucket } = installComparePage(document, { tabCount: 13 });
+    const diff = document.getElementById('diff')!;
+    Object.defineProperty(diff, 'clientWidth', { value: 1000, configurable: true });
+    const prefs = memoryPrefs();
+    controller = makeController(prefs);
+    await controller.sync(URL_A);
+
+    spies[0]!.resize!(9999, true);
+    expect(bucket.style.getPropertyValue('--ctg-sidebar-width')).toBe('504px');
+    expect(spies[0]!.widths.at(-1)).toEqual({
+      width: 504,
+      bounds: { min: 240, max: 504, reset: 320 },
+    });
+    await vi.waitFor(() => expect(prefs.width).toBe(504));
+  });
+
+  it('applies a non-commit resize without saving it', async () => {
+    const { bucket } = installComparePage(document, { tabCount: 13 });
+    const diff = document.getElementById('diff')!;
+    Object.defineProperty(diff, 'clientWidth', { value: 1000, configurable: true });
+    const prefs = memoryPrefs();
+    controller = makeController(prefs);
+    await controller.sync(URL_A);
+    const savedWidth = prefs.width;
+
+    spies[0]!.resize!(350, false);
+    expect(bucket.style.getPropertyValue('--ctg-sidebar-width')).toBe('350px');
+    expect(spies[0]!.widths.at(-1)).toEqual({
+      width: 350,
+      bounds: { min: 240, max: 504, reset: 320 },
+    });
+    expect(prefs.width).toBe(savedWidth);
+  });
+
+  it('logs instead of throwing when saving the width fails', async () => {
+    installComparePage(document, { tabCount: 13 });
+    const prefs = memoryPrefs();
+    prefs.setSidebarWidth = async () => {
+      throw new Error('storage gone');
+    };
+    const log = vi.fn();
+    controller = makeController(prefs, undefined, log);
+    await controller.sync(URL_A);
+    spies[0]!.resize!(350, true);
+    await vi.waitFor(() =>
+      expect(log).toHaveBeenCalledWith('Failed to save the sidebar width', expect.any(Error)),
     );
   });
 });

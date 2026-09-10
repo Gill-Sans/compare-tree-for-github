@@ -154,15 +154,119 @@ describe('createSidebar interactions', () => {
     sidebar.onToggleOpen(onToggle);
     const panel = container.querySelector<HTMLElement>('.ctg-panel')!;
     const bar = container.querySelector<HTMLElement>('.ctg-bar')!;
+    const resizer = container.querySelector<HTMLElement>('.ctg-resizer')!;
     expect(panel.hidden).toBe(false);
     expect(bar.hidden).toBe(true);
+    expect(resizer.hidden).toBe(false);
     container.querySelector<HTMLButtonElement>('.ctg-close')!.click();
     expect(onToggle).toHaveBeenLastCalledWith(false);
     sidebar.setOpen(false);
     expect(panel.hidden).toBe(true);
     expect(bar.hidden).toBe(false);
+    expect(resizer.hidden).toBe(true);
     container.querySelector<HTMLButtonElement>('.ctg-show')!.click();
     expect(onToggle).toHaveBeenLastCalledWith(true);
+  });
+});
+
+describe('createSidebar resizer', () => {
+  const resizer = () => container.querySelector<HTMLElement>('.ctg-resizer')!;
+
+  it('is a labelled, focusable separator', () => {
+    const el = resizer();
+    expect(el.getAttribute('role')).toBe('separator');
+    expect(el.getAttribute('aria-orientation')).toBe('vertical');
+    expect(el.getAttribute('tabindex')).toBe('0');
+    expect(el.hidden).toBe(false);
+  });
+
+  it('reflects the applied width and bounds as aria attributes, omitting valuemax when unbounded', () => {
+    sidebar.setWidth(320, { min: 240, max: 800, reset: 320 });
+    const el = resizer();
+    expect(el.getAttribute('aria-valuenow')).toBe('320');
+    expect(el.getAttribute('aria-valuemin')).toBe('240');
+    expect(el.getAttribute('aria-valuemax')).toBe('800');
+    expect(el.getAttribute('aria-valuetext')).toBe('320 pixels');
+
+    sidebar.setWidth(500, { min: 240, max: Number.POSITIVE_INFINITY, reset: 320 });
+    expect(el.getAttribute('aria-valuemax')).toBeNull();
+    expect(el.getAttribute('aria-valuetext')).toBe('500 pixels');
+  });
+
+  it('resizes with the keyboard: arrows step, Home/End jump to bounds, End is a no-op when unbounded', () => {
+    const onResize = vi.fn();
+    sidebar.onResize(onResize);
+    sidebar.setWidth(320, { min: 240, max: 800, reset: 320 });
+    const el = resizer();
+
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    expect(onResize).toHaveBeenLastCalledWith(304, true);
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(onResize).toHaveBeenLastCalledWith(336, true);
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    expect(onResize).toHaveBeenLastCalledWith(240, true);
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    expect(onResize).toHaveBeenLastCalledWith(800, true);
+    expect(onResize).toHaveBeenCalledTimes(4);
+
+    sidebar.setWidth(320, { min: 240, max: Number.POSITIVE_INFINITY, reset: 320 });
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }));
+    expect(onResize).toHaveBeenCalledTimes(4);
+  });
+
+  it('resets to the given reset width on double-click', () => {
+    const onResize = vi.fn();
+    sidebar.onResize(onResize);
+    sidebar.setWidth(500, { min: 240, max: 800, reset: 320 });
+    resizer().dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(onResize).toHaveBeenCalledWith(320, true);
+  });
+
+  it('drags: coalesces move updates to one per frame and commits on pointerup', async () => {
+    const onResize = vi.fn();
+    sidebar.onResize(onResize);
+    sidebar.setWidth(320, { min: 240, max: 800, reset: 320 });
+    const el = resizer();
+
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 100 }));
+    expect(container.hasAttribute('data-resizing')).toBe(true);
+
+    el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 130 }));
+    el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 150 }));
+    expect(onResize).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(onResize).toHaveBeenCalledWith(370, false));
+    expect(onResize).toHaveBeenCalledTimes(1);
+
+    el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 150 }));
+    expect(onResize).toHaveBeenLastCalledWith(370, true);
+    expect(container.hasAttribute('data-resizing')).toBe(false);
+  });
+
+  it('ignores non-primary buttons', () => {
+    const onResize = vi.fn();
+    sidebar.onResize(onResize);
+    sidebar.setWidth(320, { min: 240, max: 800, reset: 320 });
+    resizer().dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, button: 2, clientX: 100 }),
+    );
+    expect(container.hasAttribute('data-resizing')).toBe(false);
+    resizer().dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 200 }));
+    expect(onResize).not.toHaveBeenCalled();
+  });
+
+  it('commits the last requested width when the drag is cancelled', async () => {
+    const onResize = vi.fn();
+    sidebar.onResize(onResize);
+    sidebar.setWidth(320, { min: 240, max: 800, reset: 320 });
+    const el = resizer();
+
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 100 }));
+    el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 140 }));
+    await vi.waitFor(() => expect(onResize).toHaveBeenCalledWith(360, false));
+
+    el.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true }));
+    expect(onResize).toHaveBeenLastCalledWith(360, true);
+    expect(container.hasAttribute('data-resizing')).toBe(false);
   });
 });
 

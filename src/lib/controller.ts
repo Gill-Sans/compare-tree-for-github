@@ -1,7 +1,9 @@
 import { createDiffParser } from './diff-parser';
 import {
   SELECTORS,
+  SIDEBAR_WIDTH,
   applyLayout,
+  clampSidebarWidth,
   compareKey,
   diffUrl,
   findDiffRoot,
@@ -12,7 +14,9 @@ import {
   removeLayout,
   removeStaleHosts,
   scrollToFile,
+  setSidebarWidth,
   setStickyTop,
+  sidebarWidthBounds,
   waitFor,
   type CompareParts,
 } from './page';
@@ -185,8 +189,26 @@ export function createController(deps: ControllerDeps): Controller {
     s.mounted = mounted;
     const { sidebar } = mounted;
 
-    const open = await deps.prefs.getSidebarOpen();
+    const [open, width] = await Promise.all([
+      deps.prefs.getSidebarOpen(),
+      deps.prefs.getSidebarWidth(),
+    ]);
     if (session !== s) return false;
+
+    const applyWidth = (requested: number, commit: boolean): void => {
+      const bounds = sidebarWidthBounds(root.diff.clientWidth);
+      const applied = clampSidebarWidth(requested, bounds);
+      setSidebarWidth(root.bucket, applied);
+      sidebar.setWidth(applied, { ...bounds, reset: SIDEBAR_WIDTH.default });
+      if (commit) {
+        deps.prefs
+          .setSidebarWidth(applied)
+          .catch((error: unknown) => log('Failed to save the sidebar width', error));
+      }
+    };
+    // The stored width is applied, never re-saved on load: with a 0-width hidden container the
+    // bounds stay open so a stored width is not clamped down just because #diff isn't laid out yet.
+    applyWidth(width, false);
     applyLayout(root.bucket, open);
     sidebar.setOpen(open);
 
@@ -197,6 +219,7 @@ export function createController(deps: ControllerDeps): Controller {
         .setSidebarOpen(next)
         .catch((error: unknown) => log('Failed to save the sidebar preference', error));
     });
+    sidebar.onResize(applyWidth);
     sidebar.onSelectFile((path) =>
       scrollToFile(path, {
         files: root.files,

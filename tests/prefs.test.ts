@@ -18,4 +18,21 @@ describe('prefs', () => {
       sidebarOpen: false,
     });
   });
+
+  it('defaults the sidebar width to 320', async () => {
+    await expect(prefs.getSidebarWidth()).resolves.toBe(320);
+  });
+
+  it('persists the sidebar width in local extension storage', async () => {
+    await prefs.setSidebarWidth(480);
+    await expect(prefs.getSidebarWidth()).resolves.toBe(480);
+    await expect(fakeBrowser.storage.local.get('sidebarWidth')).resolves.toEqual({
+      sidebarWidth: 480,
+    });
+  });
+
+  it('falls back to 320 when the stored width is not a number', async () => {
+    await fakeBrowser.storage.local.set({ sidebarWidth: 'wide' });
+    await expect(prefs.getSidebarWidth()).resolves.toBe(320);
+  });
 });

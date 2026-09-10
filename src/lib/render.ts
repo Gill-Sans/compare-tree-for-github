@@ -13,6 +13,11 @@ export interface Sidebar {
   /** The callback resolves once the jump finished; the row shows a spinner until then. */
   onSelectFile(cb: (path: string) => Promise<boolean>): void;
   onRetry(cb: () => void): void;
+  /** Reflect the applied width on the divider; `reset` is what a double-click restores. */
+  setWidth(width: number, bounds: { min: number; max: number; reset: number }): void;
+  /** Width requests from the divider: repeatedly while dragging (commit false), once when a
+   * drag, key press or double-click finishes (commit true). */
+  onResize(cb: (width: number, commit: boolean) => void): void;
 }
 
 const MINUS = '−';
@@ -47,7 +52,8 @@ export function createSidebar(container: HTMLElement): Sidebar {
         <div class="ctg-status" role="status" aria-live="polite"></div>
       </header>
       <ul class="ctg-tree" role="tree" aria-label="Changed files"></ul>
-    </section>`;
+    </section>
+    <div class="ctg-resizer" role="separator" aria-orientation="vertical" aria-label="Resize file tree" tabindex="0"></div>`;
 
   const query = <T extends HTMLElement>(selector: string): T => {
     const el = container.querySelector<T>(selector);
@@ -59,12 +65,19 @@ export function createSidebar(container: HTMLElement): Sidebar {
   const totals = query('.ctg-totals');
   const status = query('.ctg-status');
   const tree = query<HTMLUListElement>('.ctg-tree');
+  const resizer = query('.ctg-resizer');
 
   let toggleCb: ((open: boolean) => void) | null = null;
   let selectCb: ((path: string) => Promise<boolean>) | null = null;
   let retryCb: (() => void) | null = null;
+  let resizeCb: ((width: number, commit: boolean) => void) | null = null;
   const rowsByPath = new Map<string, HTMLButtonElement>();
   let activeRow: HTMLButtonElement | null = null;
+
+  // Mirrors the last setWidth() call: a drag starts from the applied width, and Home/End/reset
+  // need the current bounds.
+  let currentWidth = 0;
+  let currentBounds = { min: 0, max: Number.POSITIVE_INFINITY, reset: 0 };
 
   query('.ctg-show').addEventListener('click', () => toggleCb?.(true));
   query('.ctg-close').addEventListener('click', () => toggleCb?.(false));
@@ -100,6 +113,119 @@ export function createSidebar(container: HTMLElement): Sidebar {
     if (!item?.classList.contains('ctg-dir')) return;
     item.setAttribute('aria-expanded', String(event.key === 'ArrowRight'));
     event.preventDefault();
+  });
+
+  // Drag state for the divider. `requested` tracks the latest pointer position regardless of
+  // whether a frame is pending, so pointercancel/lostpointercapture can commit it directly.
+  let dragging = false;
+  let dragPointerId: number | undefined;
+  let startX = 0;
+  let startWidth = 0;
+  let requested = 0;
+  let frame: { cancel: () => void } | null = null;
+
+  function scheduleResize(): void {
+    if (frame) return;
+    const win = doc.defaultView;
+    if (win && typeof win.requestAnimationFrame === 'function') {
+      const id = win.requestAnimationFrame(fireResize);
+      frame = { cancel: () => win.cancelAnimationFrame(id) };
+    } else {
+      const id = setTimeout(fireResize, 16);
+      frame = { cancel: () => clearTimeout(id) };
+    }
+  }
+
+  function fireResize(): void {
+    frame = null;
+    resizeCb?.(requested, false);
+  }
+
+  function cancelScheduledResize(): void {
+    frame?.cancel();
+    frame = null;
+  }
+
+  function endDrag(): void {
+    dragging = false;
+    container.toggleAttribute('data-resizing', false);
+    if (dragPointerId !== undefined && typeof resizer.releasePointerCapture === 'function') {
+      try {
+        resizer.releasePointerCapture(dragPointerId);
+      } catch {
+        // Capture may already be gone (element detached, pointer lost); nothing to clean up.
+      }
+    }
+    dragPointerId = undefined;
+  }
+
+  resizer.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    dragging = true;
+    dragPointerId = event.pointerId;
+    startX = event.clientX;
+    startWidth = currentWidth;
+    requested = startWidth;
+    container.toggleAttribute('data-resizing', true);
+    if (typeof resizer.setPointerCapture === 'function') {
+      try {
+        resizer.setPointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture is unavailable in some test/embedding environments; dragging still
+        // works off document-level pointermove/pointerup.
+      }
+    }
+  });
+
+  resizer.addEventListener('pointermove', (event) => {
+    if (!dragging) return;
+    requested = startWidth + (event.clientX - startX);
+    scheduleResize();
+  });
+
+  resizer.addEventListener('pointerup', (event) => {
+    if (!dragging) return;
+    cancelScheduledResize();
+    const committed = startWidth + (event.clientX - startX);
+    endDrag();
+    resizeCb?.(committed, true);
+  });
+
+  resizer.addEventListener('pointercancel', () => {
+    if (!dragging) return;
+    cancelScheduledResize();
+    const committed = requested;
+    endDrag();
+    resizeCb?.(committed, true);
+  });
+
+  resizer.addEventListener('lostpointercapture', () => {
+    if (!dragging) return;
+    cancelScheduledResize();
+    const committed = requested;
+    endDrag();
+    resizeCb?.(committed, true);
+  });
+
+  resizer.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      resizeCb?.(currentWidth - 16, true);
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      resizeCb?.(currentWidth + 16, true);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      resizeCb?.(currentBounds.min, true);
+    } else if (event.key === 'End' && Number.isFinite(currentBounds.max)) {
+      event.preventDefault();
+      resizeCb?.(currentBounds.max, true);
+    }
+  });
+
+  resizer.addEventListener('dblclick', () => {
+    resizeCb?.(currentBounds.reset, true);
   });
 
   function renderNode(node: TreeNode, depth: number): HTMLLIElement {
@@ -217,6 +343,7 @@ export function createSidebar(container: HTMLElement): Sidebar {
       container.toggleAttribute('data-open', open);
       bar.hidden = open;
       panel.hidden = !open;
+      resizer.hidden = !open;
     },
     setState(state) {
       renderStatus(state);
@@ -260,6 +387,21 @@ export function createSidebar(container: HTMLElement): Sidebar {
     },
     onRetry(cb) {
       retryCb = cb;
+    },
+    setWidth(width, bounds) {
+      currentWidth = width;
+      currentBounds = bounds;
+      resizer.setAttribute('aria-valuenow', String(width));
+      resizer.setAttribute('aria-valuemin', String(bounds.min));
+      if (Number.isFinite(bounds.max)) {
+        resizer.setAttribute('aria-valuemax', String(bounds.max));
+      } else {
+        resizer.removeAttribute('aria-valuemax');
+      }
+      resizer.setAttribute('aria-valuetext', `${width} pixels`);
+    },
+    onResize(cb) {
+      resizeCb = cb;
     },
   };
 }

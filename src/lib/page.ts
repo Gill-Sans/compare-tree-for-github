@@ -22,6 +22,10 @@ export const OPEN_ATTR = 'data-ctg-open';
 export const PAGE_STYLE_ID = 'ctg-page-style';
 export const DEFAULT_STICKY_TOP = 8;
 
+/** Sidebar width limits in px; the diff column always keeps at least `minDiff` px. */
+export const SIDEBAR_WIDTH = { min: 240, default: 320, minDiff: 480 } as const;
+const COLUMN_GAP = 16;
+
 const COMPARE_PATH = /^\/([^/]+)\/([^/]+)\/compare\/(.+)$/;
 
 /** Owner, repo, and raw (still URL-encoded) range of a compare URL, or null for any other URL. */
@@ -138,8 +142,8 @@ export function readTabFileCount(doc: Document = document): number | null {
 const PAGE_CSS = `
 #files_bucket[${OPEN_ATTR}] #diff {
   display: grid;
-  grid-template-columns: var(--ctg-sidebar-width, 320px) minmax(0, 1fr);
-  column-gap: 16px;
+  grid-template-columns: clamp(${SIDEBAR_WIDTH.min}px, var(--ctg-sidebar-width, ${SIDEBAR_WIDTH.default}px), calc(100% - ${SIDEBAR_WIDTH.minDiff + COLUMN_GAP}px)) minmax(0, 1fr);
+  column-gap: ${COLUMN_GAP}px;
   align-items: start;
 }
 #files_bucket[${OPEN_ATTR}] #diff > * { grid-column: 1 / -1; }
@@ -148,8 +152,6 @@ const PAGE_CSS = `
   grid-row: 2;
   position: sticky;
   top: var(--ctg-sticky-top, 8px);
-  max-height: calc(100vh - var(--ctg-sticky-top, 8px) - 8px);
-  overflow: auto;
 }
 #files_bucket[${OPEN_ATTR}] #diff > #files { grid-column: 2; grid-row: 2; min-width: 0; }
 #files_bucket[${OPEN_ATTR}] > .container-xl,
@@ -177,6 +179,32 @@ export function removeLayout(bucket: HTMLElement): void {
 
 export function setStickyTop(bucket: HTMLElement, px: number): void {
   bucket.style.setProperty('--ctg-sticky-top', `${px}px`);
+}
+
+export interface WidthBounds {
+  min: number;
+  /** Infinity while the diff container has no width yet, e.g. a hidden tab. */
+  max: number;
+}
+
+/** How far the sidebar may be resized, keeping `minDiff` px for the diff column. */
+export function sidebarWidthBounds(diffWidth: number): WidthBounds {
+  const min = SIDEBAR_WIDTH.min;
+  const max =
+    diffWidth > 0
+      ? Math.max(min, Math.floor(diffWidth - COLUMN_GAP - SIDEBAR_WIDTH.minDiff))
+      : Number.POSITIVE_INFINITY;
+  return { min, max };
+}
+
+/** Fit `width` within `bounds`, falling back to the default for a non-finite request. */
+export function clampSidebarWidth(width: number, bounds: WidthBounds): number {
+  const requested = Number.isFinite(width) ? width : SIDEBAR_WIDTH.default;
+  return Math.round(Math.min(Math.max(requested, bounds.min), bounds.max));
+}
+
+export function setSidebarWidth(bucket: HTMLElement, px: number): void {
+  bucket.style.setProperty('--ctg-sidebar-width', `${px}px`);
 }
 
 /** Drop sidebar hosts left behind by Turbo's page cache before mounting a fresh one. */

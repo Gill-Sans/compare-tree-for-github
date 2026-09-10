@@ -6,6 +6,7 @@ import {
   PAGE_STYLE_ID,
   anchorFor,
   applyLayout,
+  clampSidebarWidth,
   findDiffRoot,
   measureStickyTop,
   observeActiveFile,
@@ -13,6 +14,8 @@ import {
   removeLayout,
   removeStaleHosts,
   scrollToFile,
+  setSidebarWidth,
+  sidebarWidthBounds,
   waitFor,
 } from '../src/lib/page';
 import { fileElement, installComparePage } from './helpers/page-dom';
@@ -82,7 +85,11 @@ describe('layout', () => {
     applyLayout(bucket, true);
     applyLayout(bucket, true);
     expect(document.querySelectorAll(`#${PAGE_STYLE_ID}`)).toHaveLength(1);
-    expect(document.getElementById(PAGE_STYLE_ID)?.textContent).toContain(`[${OPEN_ATTR}]`);
+    const css = document.getElementById(PAGE_STYLE_ID)?.textContent ?? '';
+    expect(css).toContain(`[${OPEN_ATTR}]`);
+    expect(css).toContain('clamp(240px, var(--ctg-sidebar-width, 320px), calc(100% - 496px))');
+    expect(css).not.toContain('overflow');
+    expect(css).not.toContain('max-height');
     expect(bucket.hasAttribute(OPEN_ATTR)).toBe(true);
     applyLayout(bucket, false);
     expect(bucket.hasAttribute(OPEN_ATTR)).toBe(false);
@@ -97,6 +104,30 @@ describe('layout', () => {
     removeStaleHosts(document);
     expect(document.querySelector(HOST_TAG)).toBeNull();
     expect(measureStickyTop(document, window)).toBe(8);
+  });
+});
+
+describe('sidebar width', () => {
+  it('bounds the sidebar width against the diff width, keeping room for the diff column', () => {
+    expect(sidebarWidthBounds(1248)).toEqual({ min: 240, max: 752 });
+    // A narrow diff would push max below min; it clamps to min instead of inverting.
+    expect(sidebarWidthBounds(600)).toEqual({ min: 240, max: 240 });
+    // No layout yet (e.g. a hidden tab): stay unbounded rather than shrink a stored width.
+    expect(sidebarWidthBounds(0)).toEqual({ min: 240, max: Number.POSITIVE_INFINITY });
+  });
+
+  it('clamps a requested width into bounds, rounding and falling back on non-finite input', () => {
+    const bounds = { min: 240, max: 800 };
+    expect(clampSidebarWidth(100, bounds)).toBe(240);
+    expect(clampSidebarWidth(900, bounds)).toBe(800);
+    expect(clampSidebarWidth(300.6, bounds)).toBe(301);
+    expect(clampSidebarWidth(Number.NaN, bounds)).toBe(320);
+  });
+
+  it('writes the sidebar width css variable', () => {
+    const { bucket } = installComparePage(document);
+    setSidebarWidth(bucket, 400);
+    expect(bucket.style.getPropertyValue('--ctg-sidebar-width')).toBe('400px');
   });
 });
 
