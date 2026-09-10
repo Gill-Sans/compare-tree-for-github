@@ -19,6 +19,13 @@ const TREE = buildTree([
   change('logo.png', 0, 0, { binary: true }),
 ]);
 
+// Three levels deep so a single toggle has more than one ancestor group to update.
+const NESTED_TREE = buildTree([
+  change('a/b/c/file1.ts'),
+  change('a/b/c/file2.ts'),
+  change('a/b/other.ts'),
+]);
+
 let container: HTMLElement;
 let sidebar: Sidebar;
 
@@ -34,6 +41,10 @@ const rows = () => Array.from(container.querySelectorAll<HTMLButtonElement>('.ct
 const item = (path: string) => container.querySelector<HTMLLIElement>(`li[data-path="${path}"]`)!;
 const rowFor = (path: string) => item(path).querySelector<HTMLButtonElement>(':scope > .ctg-row')!;
 const status = () => container.querySelector<HTMLElement>('.ctg-status')!;
+const treeEl = () => container.querySelector<HTMLElement>('.ctg-tree')!;
+const groupFor = (path: string) =>
+  item(path).querySelector<HTMLUListElement>(':scope > .ctg-group')!;
+const rowsOf = (path: string) => groupFor(path).style.getPropertyValue('--ctg-rows');
 
 describe('createSidebar rendering', () => {
   it('renders a tree with roles, names, and counts', () => {
@@ -306,6 +317,66 @@ describe('createSidebar resizer', () => {
     el.dispatchEvent(new PointerEvent('lostpointercapture', { bubbles: true }));
     expect(onResize).toHaveBeenLastCalledWith(360, true);
     expect(container.hasAttribute('data-resizing')).toBe(false);
+  });
+});
+
+describe('createSidebar row counts', () => {
+  it("mirrors each group's visible row count onto --ctg-rows after render", () => {
+    expect(rowsOf('src/app')).toBe('2');
+    expect(rowsOf('src')).toBe('4');
+    expect(rowsOf('docs')).toBe('1');
+  });
+
+  it('propagates a delta to every ancestor group when a nested folder collapses or expands', () => {
+    sidebar.setTree(NESTED_TREE);
+    expect(rowsOf('a/b/c')).toBe('2');
+    expect(rowsOf('a/b')).toBe('4');
+    expect(rowsOf('a')).toBe('5');
+
+    rowFor('a/b/c').click();
+    expect(item('a/b/c').getAttribute('aria-expanded')).toBe('false');
+    // Ancestors shrink by the collapsed folder's own row count (2)...
+    expect(rowsOf('a/b')).toBe('2');
+    expect(rowsOf('a')).toBe('3');
+    // ...but the collapsed folder's own stored count is untouched.
+    expect(rowsOf('a/b/c')).toBe('2');
+
+    rowFor('a/b/c').click();
+    expect(item('a/b/c').getAttribute('aria-expanded')).toBe('true');
+    expect(rowsOf('a/b')).toBe('4');
+    expect(rowsOf('a')).toBe('5');
+  });
+
+  it('leaves counts unchanged when ArrowRight is pressed on an already-expanded folder', () => {
+    const before = rowsOf('src');
+    rowFor('src').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(item('src').getAttribute('aria-expanded')).toBe('true');
+    expect(rowsOf('src')).toBe(before);
+  });
+
+  it('recounts every group bottom-up after Collapse all / Expand all', () => {
+    sidebar.setTree(NESTED_TREE);
+    container.querySelector<HTMLButtonElement>('.ctg-collapse-all')!.click();
+    expect(rowsOf('a/b/c')).toBe('2');
+    expect(rowsOf('a/b')).toBe('2');
+    expect(rowsOf('a')).toBe('1');
+
+    container.querySelector<HTMLButtonElement>('.ctg-expand-all')!.click();
+    expect(rowsOf('a/b/c')).toBe('2');
+    expect(rowsOf('a/b')).toBe('4');
+    expect(rowsOf('a')).toBe('5');
+  });
+});
+
+describe('createSidebar large-tree switch', () => {
+  it('is absent for a tree with 1,000 rows or fewer', () => {
+    expect(treeEl().hasAttribute('data-large')).toBe(false);
+  });
+
+  it('is present once a tree has more than 1,000 rows', () => {
+    const many = Array.from({ length: 1001 }, (_, i) => change(`file${i}.ts`));
+    sidebar.setTree(buildTree(many));
+    expect(treeEl().hasAttribute('data-large')).toBe(true);
   });
 });
 

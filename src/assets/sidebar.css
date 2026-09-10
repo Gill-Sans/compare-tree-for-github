@@ -163,6 +163,16 @@
   display: none;
 }
 
+/* On large trees, skip style/layout/paint for off-screen folder groups. --ctg-rows (kept in sync
+   in render.ts) gives the exact intrinsic size so the scrollbar never drifts; rows must stay
+   exactly 32px tall for the math to hold. content-visibility implies paint containment, and since
+   groups span the tree's full width with rows inset 8px, the active row's accent bar at
+   left: -8px stays visible even when its group is content-visibility: auto. */
+.ctg-tree[data-large] .ctg-group {
+  content-visibility: auto;
+  contain-intrinsic-block-size: calc(var(--ctg-rows, 0) * 32px);
+}
+
 .ctg-row {
   position: relative;
   display: flex;

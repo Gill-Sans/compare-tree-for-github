@@ -23,6 +23,12 @@ export interface Sidebar {
 const MINUS = '−';
 const ARROW = '→';
 
+// Toggling a large folder open/closed costs style+layout proportional to its descendant rows
+// (measured: ~100ms at 1x CPU, ~680ms at 4x CPU for a 3,800-row folder). content-visibility:auto
+// on folder groups (see sidebar.css) cuts that to ~20ms by skipping off-screen rows, but it also
+// adds ~5-15ms of overhead to a small toggle — so it's only switched on past this row count.
+const LARGE_TREE_ROWS = 1000;
+
 const STATUS_CLASS: Record<FileStatus, string> = {
   added: 'ctg-icon-added',
   modified: 'ctg-icon-modified',
@@ -100,6 +106,11 @@ export function createSidebar(container: HTMLElement): Sidebar {
   const rowsByPath = new Map<string, HTMLButtonElement>();
   let activeRow: HTMLButtonElement | null = null;
 
+  // How many rows each .ctg-group currently shows (its own children, plus the children of any
+  // of those that are themselves expanded folders) — mirrored onto the group as --ctg-rows so
+  // content-visibility:auto can reserve exactly that much space for an off-screen group.
+  const rowCounts = new WeakMap<HTMLUListElement, number>();
+
   // Mirrors the last setWidth() call: a drag starts from the applied width, and Home/End/reset
   // need the current bounds.
   let currentWidth = 0;
@@ -114,6 +125,56 @@ export function createSidebar(container: HTMLElement): Sidebar {
     tree
       .querySelectorAll('.ctg-dir')
       .forEach((li) => li.setAttribute('aria-expanded', String(expanded)));
+    recountAll();
+  }
+
+  /** The single path through which a folder's expanded state changes, so its row-count delta
+   * always reaches every ancestor group. A no-op when the state doesn't actually change. */
+  function setExpanded(item: HTMLElement, expanded: boolean): void {
+    const wasExpanded = item.getAttribute('aria-expanded') === 'true';
+    if (wasExpanded === expanded) return;
+    item.setAttribute('aria-expanded', String(expanded));
+    const group = item.querySelector<HTMLUListElement>(':scope > .ctg-group');
+    if (!group) return;
+    const ownRows = rowCounts.get(group) ?? 0;
+    const delta = expanded ? ownRows : -ownRows;
+    let ancestor = item.parentElement;
+    while (ancestor?.classList.contains('ctg-group')) {
+      const ancestorGroup = ancestor as HTMLUListElement;
+      const updated = (rowCounts.get(ancestorGroup) ?? 0) + delta;
+      rowCounts.set(ancestorGroup, updated);
+      ancestorGroup.style.setProperty('--ctg-rows', String(updated));
+      ancestor = ancestorGroup.parentElement?.parentElement ?? null;
+    }
+  }
+
+  /** Recomputes every group's row count bottom-up from the DOM's current aria-expanded state.
+   * Used after Collapse all / Expand all, which flip every folder in one pass rather than routing
+   * each one through setExpanded. */
+  function recountGroup(group: HTMLUListElement): number {
+    let count = 0;
+    for (const child of Array.from(group.children) as HTMLLIElement[]) {
+      count += 1;
+      if (child.classList.contains('ctg-dir')) {
+        const childGroup = child.querySelector<HTMLUListElement>(':scope > .ctg-group');
+        if (childGroup) {
+          const childRows = recountGroup(childGroup);
+          if (child.getAttribute('aria-expanded') === 'true') count += childRows;
+        }
+      }
+    }
+    rowCounts.set(group, count);
+    group.style.setProperty('--ctg-rows', String(count));
+    return count;
+  }
+
+  function recountAll(): void {
+    for (const child of Array.from(tree.children) as HTMLLIElement[]) {
+      if (child.classList.contains('ctg-dir')) {
+        const group = child.querySelector<HTMLUListElement>(':scope > .ctg-group');
+        if (group) recountGroup(group);
+      }
+    }
   }
 
   tree.addEventListener('click', (event) => {
@@ -121,7 +182,7 @@ export function createSidebar(container: HTMLElement): Sidebar {
     const item = row?.parentElement;
     if (!row || !item || !tree.contains(row)) return;
     if (item.classList.contains('ctg-dir')) {
-      item.setAttribute('aria-expanded', String(item.getAttribute('aria-expanded') !== 'true'));
+      setExpanded(item, item.getAttribute('aria-expanded') !== 'true');
       return;
     }
     const path = item.dataset.path;
@@ -137,7 +198,7 @@ export function createSidebar(container: HTMLElement): Sidebar {
     const row = (event.target as HTMLElement).closest<HTMLButtonElement>('.ctg-row');
     const item = row?.parentElement;
     if (!item?.classList.contains('ctg-dir')) return;
-    item.setAttribute('aria-expanded', String(event.key === 'ArrowRight'));
+    setExpanded(item, event.key === 'ArrowRight');
     event.preventDefault();
   });
 
@@ -284,7 +345,19 @@ export function createSidebar(container: HTMLElement): Sidebar {
     const group = doc.createElement('ul');
     group.className = 'ctg-group';
     group.setAttribute('role', 'group');
-    for (const child of dir.children) group.appendChild(renderNode(child, depth + 1));
+    // Every folder starts expanded, so each child's own group (if it has one) is counted too.
+    let rows = 0;
+    for (const child of dir.children) {
+      const childLi = renderNode(child, depth + 1);
+      group.appendChild(childLi);
+      rows += 1;
+      if (child.kind === 'dir') {
+        const childGroup = childLi.querySelector<HTMLUListElement>(':scope > .ctg-group');
+        if (childGroup) rows += rowCounts.get(childGroup) ?? 0;
+      }
+    }
+    rowCounts.set(group, rows);
+    group.style.setProperty('--ctg-rows', String(rows));
 
     li.append(row, group);
     return li;
@@ -366,6 +439,9 @@ export function createSidebar(container: HTMLElement): Sidebar {
       const fragment = doc.createDocumentFragment();
       for (const child of root.children) fragment.appendChild(renderNode(child, 0));
       tree.replaceChildren(fragment);
+      // Every folder starts expanded, so every rendered row is currently in the DOM.
+      const rowCount = tree.querySelectorAll('.ctg-item').length;
+      tree.toggleAttribute('data-large', rowCount > LARGE_TREE_ROWS);
 
       const count = doc.createElement('span');
       count.textContent = `${root.files.toLocaleString('en-US')} ${root.files === 1 ? 'file' : 'files'}`;
