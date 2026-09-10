@@ -198,7 +198,7 @@ export function createController(deps: ControllerDeps): Controller {
     const applyWidth = (requested: number, commit: boolean): void => {
       const bounds = sidebarWidthBounds(root.diff.clientWidth);
       const applied = clampSidebarWidth(requested, bounds);
-      setSidebarWidth(root.bucket, applied);
+      setSidebarWidth(root.diff, applied);
       sidebar.setWidth(applied, { ...bounds, reset: SIDEBAR_WIDTH.default });
       if (commit) {
         deps.prefs

@@ -1,4 +1,4 @@
-import { glyphUrl, ICONS, type GlyphName } from './icons';
+import { ICONS } from './icons';
 import type { DirNode, FileNode, FileStatus, SidebarState, TreeNode } from './types';
 
 export interface Sidebar {
@@ -37,18 +37,7 @@ const STATUS_CLASS: Record<FileStatus, string> = {
   copied: 'ctg-icon-copied',
 };
 
-// Rows hold no <svg> of their own; each glyph is a CSS mask image referencing one of these
-// custom properties, set once on the container so every row can share the same data: URIs.
-const GLYPH_VARS: Record<string, GlyphName> = {
-  '--ctg-glyph-chevron': 'chevron',
-  '--ctg-glyph-folder': 'folder',
-  '--ctg-glyph-folder-open': 'folderOpen',
-  '--ctg-glyph-file-added': 'fileAdded',
-  '--ctg-glyph-file-removed': 'fileRemoved',
-  '--ctg-glyph-file-diff': 'fileDiff',
-  '--ctg-glyph-file-moved': 'fileMoved',
-};
-
+// Rows hold no <svg> of their own; each glyph is a static CSS mask image defined in sidebar.css.
 const DIR_ROW_HTML =
   '<span class="ctg-glyph ctg-toggle"></span>' +
   '<span class="ctg-glyph ctg-icon ctg-icon-dir"></span>' +
@@ -63,9 +52,6 @@ const FILE_ROW_HTML =
 export function createSidebar(container: HTMLElement): Sidebar {
   const doc = container.ownerDocument;
   container.classList.add('ctg-root');
-  for (const [prop, name] of Object.entries(GLYPH_VARS)) {
-    container.style.setProperty(prop, glyphUrl(name));
-  }
   container.innerHTML = `
     <div class="ctg-bar">
       <button type="button" class="ctg-btn ctg-show" title="Show file tree">${ICONS.sidebarExpand}<span>Show file tree</span></button>

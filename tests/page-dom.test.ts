@@ -88,6 +88,10 @@ describe('layout', () => {
     const css = document.getElementById(PAGE_STYLE_ID)?.textContent ?? '';
     expect(css).toContain(`[${OPEN_ATTR}]`);
     expect(css).toContain('clamp(240px, var(--ctg-sidebar-width, 320px), calc(100% - 496px))');
+    // Both custom properties are registered as non-inherited, so writing them restyles only the
+    // element they're set on rather than the whole diff subtree beneath it.
+    expect(css).toMatch(/@property --ctg-sidebar-width\s*{[^}]*inherits:\s*false/);
+    expect(css).toMatch(/@property --ctg-rows\s*{[^}]*inherits:\s*false/);
     expect(css).not.toContain('overflow');
     expect(css).not.toContain('max-height');
     expect(bucket.hasAttribute(OPEN_ATTR)).toBe(true);
@@ -124,10 +128,12 @@ describe('sidebar width', () => {
     expect(clampSidebarWidth(Number.NaN, bounds)).toBe(320);
   });
 
-  it('writes the sidebar width css variable', () => {
+  it('writes the sidebar width css variable on the given element', () => {
     const { bucket } = installComparePage(document);
-    setSidebarWidth(bucket, 400);
-    expect(bucket.style.getPropertyValue('--ctg-sidebar-width')).toBe('400px');
+    const diff = document.getElementById('diff')!;
+    setSidebarWidth(diff, 400);
+    expect(diff.style.getPropertyValue('--ctg-sidebar-width')).toBe('400px');
+    expect(bucket.style.getPropertyValue('--ctg-sidebar-width')).toBe('');
   });
 });
 

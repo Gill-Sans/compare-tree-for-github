@@ -98,22 +98,6 @@ describe('createSidebar rendering', () => {
     expect(rowFor('docs').querySelector('.ctg-icon-dir')).not.toBeNull();
   });
 
-  it('defines every tree glyph as a data: URL custom property on the container', () => {
-    const props = [
-      '--ctg-glyph-chevron',
-      '--ctg-glyph-folder',
-      '--ctg-glyph-folder-open',
-      '--ctg-glyph-file-added',
-      '--ctg-glyph-file-removed',
-      '--ctg-glyph-file-diff',
-      '--ctg-glyph-file-moved',
-    ];
-    for (const prop of props) {
-      const value = container.style.getPropertyValue(prop);
-      expect(value).toMatch(/^url\("data:image\/svg\+xml,/);
-    }
-  });
-
   it('re-renders cleanly when a new tree arrives', () => {
     sidebar.setTree(buildTree([change('only.ts', 1, 0)]));
     expect(rows()).toHaveLength(1);

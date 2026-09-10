@@ -140,6 +140,21 @@ export function readTabFileCount(doc: Document = document): number | null {
 }
 
 const PAGE_CSS = `
+/* Registering these as non-inherited (the default for a custom property is to inherit) means a
+   write only restyles the element the property is set on, not every descendant beneath it —
+   without this, each drag step or row-count update forces Chrome to restyle GitHub's whole diff
+   subtree. Registered here, in this document-level stylesheet, because the sidebar's shadow root
+   also relies on --ctg-rows for its content-visibility sizing. */
+@property --ctg-sidebar-width {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: ${SIDEBAR_WIDTH.default}px;
+}
+@property --ctg-rows {
+  syntax: '<integer>';
+  inherits: false;
+  initial-value: 0;
+}
 #files_bucket[${OPEN_ATTR}] #diff {
   display: grid;
   grid-template-columns: clamp(${SIDEBAR_WIDTH.min}px, var(--ctg-sidebar-width, ${SIDEBAR_WIDTH.default}px), calc(100% - ${SIDEBAR_WIDTH.minDiff + COLUMN_GAP}px)) minmax(0, 1fr);
@@ -203,8 +218,9 @@ export function clampSidebarWidth(width: number, bounds: WidthBounds): number {
   return Math.round(Math.min(Math.max(requested, bounds.min), bounds.max));
 }
 
-export function setSidebarWidth(bucket: HTMLElement, px: number): void {
-  bucket.style.setProperty('--ctg-sidebar-width', `${px}px`);
+/** Write the resolved width onto the diff container's (non-inherited) --ctg-sidebar-width. */
+export function setSidebarWidth(diff: HTMLElement, px: number): void {
+  diff.style.setProperty('--ctg-sidebar-width', `${px}px`);
 }
 
 /** Drop sidebar hosts left behind by Turbo's page cache before mounting a fresh one. */

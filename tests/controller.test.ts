@@ -217,11 +217,12 @@ describe('controller happy path', () => {
 
 describe('controller width', () => {
   it('applies the stored width to --ctg-sidebar-width and the sidebar without saving it', async () => {
-    const { bucket } = installComparePage(document, { tabCount: 13 });
+    installComparePage(document, { tabCount: 13 });
+    const diff = document.getElementById('diff')!;
     const prefs = memoryPrefs(true, 400);
     controller = makeController(prefs);
     await controller.sync(URL_A);
-    expect(bucket.style.getPropertyValue('--ctg-sidebar-width')).toBe('400px');
+    expect(diff.style.getPropertyValue('--ctg-sidebar-width')).toBe('400px');
     expect(spies[0]!.widths[0]).toEqual({
       width: 400,
       bounds: { min: 240, max: Number.POSITIVE_INFINITY, reset: 320 },
@@ -231,7 +232,7 @@ describe('controller width', () => {
   });
 
   it('clamps a committed resize against the diff width and saves it', async () => {
-    const { bucket } = installComparePage(document, { tabCount: 13 });
+    installComparePage(document, { tabCount: 13 });
     const diff = document.getElementById('diff')!;
     Object.defineProperty(diff, 'clientWidth', { value: 1000, configurable: true });
     const prefs = memoryPrefs();
@@ -239,7 +240,7 @@ describe('controller width', () => {
     await controller.sync(URL_A);
 
     spies[0]!.resize!(9999, true);
-    expect(bucket.style.getPropertyValue('--ctg-sidebar-width')).toBe('504px');
+    expect(diff.style.getPropertyValue('--ctg-sidebar-width')).toBe('504px');
     expect(spies[0]!.widths.at(-1)).toEqual({
       width: 504,
       bounds: { min: 240, max: 504, reset: 320 },
@@ -248,7 +249,7 @@ describe('controller width', () => {
   });
 
   it('applies a non-commit resize without saving it', async () => {
-    const { bucket } = installComparePage(document, { tabCount: 13 });
+    installComparePage(document, { tabCount: 13 });
     const diff = document.getElementById('diff')!;
     Object.defineProperty(diff, 'clientWidth', { value: 1000, configurable: true });
     const prefs = memoryPrefs();
@@ -257,7 +258,7 @@ describe('controller width', () => {
     const savedWidth = prefs.width;
 
     spies[0]!.resize!(350, false);
-    expect(bucket.style.getPropertyValue('--ctg-sidebar-width')).toBe('350px');
+    expect(diff.style.getPropertyValue('--ctg-sidebar-width')).toBe('350px');
     expect(spies[0]!.widths.at(-1)).toEqual({
       width: 350,
       bounds: { min: 240, max: 504, reset: 320 },
