@@ -18,7 +18,7 @@ import {
 } from './page';
 import type { Prefs } from './prefs';
 import type { Sidebar } from './render';
-import { buildTree } from './tree';
+import { buildTree, compactTree } from './tree';
 
 export interface MountedSidebar {
   sidebar: Sidebar;
@@ -114,7 +114,7 @@ export function createController(deps: ControllerDeps): Controller {
       const summary = parser.end();
       if (s.abort.signal.aborted || session !== s) return;
 
-      sidebar.setTree(buildTree(summary.files));
+      sidebar.setTree(compactTree(buildTree(summary.files)));
       const parsed = summary.files.length;
       if (expectedFiles !== null && expectedFiles !== parsed) {
         sidebar.setState({

@@ -70,3 +70,32 @@ function compareNodes(x: TreeNode, y: TreeNode): number {
   if (x.kind !== y.kind) return x.kind === 'dir' ? -1 : 1;
   return collator.compare(x.name, y.name);
 }
+
+/**
+ * Fold every chain of folders that holds exactly one sub-folder and nothing else into a single
+ * node named "a/b/c", the way GitHub's pull request file tree does. Files never fold into a
+ * folder, and the root is never folded, so a lone top-level chain still shows as one row.
+ * Returns a new tree; the input is left untouched.
+ */
+export function compactTree(root: DirNode): DirNode {
+  return { ...root, children: root.children.map(compactNode) };
+}
+
+function compactNode(node: TreeNode): TreeNode {
+  if (node.kind === 'file') return node;
+  let dir = node;
+  let name = dir.name;
+  let only = soleSubfolder(dir);
+  while (only) {
+    name = `${name}/${only.name}`;
+    dir = only;
+    only = soleSubfolder(dir);
+  }
+  // Every folder in a folded chain has one child, so the deepest folder's rollups are the chain's.
+  return { ...dir, name, children: dir.children.map(compactNode) };
+}
+
+function soleSubfolder(dir: DirNode): DirNode | null {
+  const [only, ...rest] = dir.children;
+  return only?.kind === 'dir' && rest.length === 0 ? only : null;
+}

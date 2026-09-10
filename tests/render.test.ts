@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSidebar, formatBytes, type Sidebar } from '../src/lib/render';
-import { buildTree } from '../src/lib/tree';
+import { buildTree, compactTree } from '../src/lib/tree';
 import type { FileChange } from '../src/lib/types';
 
 const change = (
@@ -83,6 +83,17 @@ describe('createSidebar rendering', () => {
     sidebar.setTree(buildTree([change('only.ts', 1, 0)]));
     expect(rows()).toHaveLength(1);
     expect(container.querySelector('.ctg-totals')?.textContent).toBe('1 file +1 −0');
+  });
+
+  it('labels a folded folder chain with the joined path', () => {
+    sidebar.setTree(
+      compactTree(
+        buildTree([change('src/main/java/App.java', 1, 0), change('src/main/java/Util.java')]),
+      ),
+    );
+    expect(rows()).toHaveLength(3);
+    expect(rowFor('src/main/java').querySelector('.ctg-name')?.textContent).toBe('src/main/java');
+    expect(rowFor('src/main/java').title).toBe('src/main/java');
   });
 });
 
